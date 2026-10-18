@@ -12,9 +12,11 @@ tasks:
   build:
     desc: Build the overlay GUI (open-perf-hud.exe) and the CLI (oph-cli.exe)
     deps: [modernize]
+    env:
+      CGO_ENABLED: "0" # pure Go, no cgo: same size, no toolchain surprises
     cmds:
-      - go build -trimpath -ldflags "-s -w -H windowsgui" -o open-perf-hud.exe .
-      - go build -trimpath -ldflags "-s -w" -o oph-cli.exe .
+      - go build -trimpath -buildvcs=false -ldflags "-s -w -H windowsgui -buildid=" -o open-perf-hud.exe .
+      - go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -o oph-cli.exe .
 
   check:
     desc: gofmt (list pending) + go vet + go test (C struct layout on x64)
