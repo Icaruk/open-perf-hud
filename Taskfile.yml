@@ -5,48 +5,49 @@ tasks:
     deps: [build]
 
   build:
-    desc: Compila overlay GUI (open-perf-hud.exe) y CLI (oph-cli.exe)
+    desc: Build the overlay GUI (open-perf-hud.exe) and the CLI (oph-cli.exe)
     cmds:
       - go build -trimpath -ldflags "-s -w -H windowsgui" -o open-perf-hud.exe .
       - go build -trimpath -ldflags "-s -w" -o oph-cli.exe .
 
   check:
-    desc: gofmt (lista pendientes) + go vet + go test (layout C x64)
+    desc: gofmt (list pending) + go vet + go test (C struct layout on x64)
     cmds:
       - gofmt -l .
       - go vet ./...
       - go test ./...
 
   run:
-    desc: Compila y lanza el overlay
+    desc: Build and launch the overlay
     deps: [build]
     cmds:
       - pwsh -NoProfile -Command "Start-Process -FilePath .\open-perf-hud.exe -WorkingDirectory ."
 
   cli:
-    desc: Métricas por consola (Ctrl+C para salir)
+    desc: Metrics in the console (Ctrl+C to exit)
     deps: [build]
     cmds:
       - cmd: .\oph-cli.exe --cli
-        ignore_error: true # Ctrl+C devuelve código != 0
+        ignore_error: true # Ctrl+C returns a non-zero code
 
   probe:
-    desc: 'Histograma de eventos ETW (ejecutar como admin). Uso: task probe -- 10s'
+    desc: 'ETW event histogram. Usage: task probe -- 10s'
     deps: [build]
     cmds:
       - .\oph-cli.exe --probe {{.CLI_ARGS | default "10s"}}
 
   smoke:
-    desc: Overlay 6s sin morir + CLI 4s con línea de métricas
+    desc: Overlay alive for 6s without dying + CLI printing a metrics line for 4s
     cmds:
       - pwsh -NoProfile -File scripts/smoke.ps1
 
   clean:
-    desc: Borra los exes
+    desc: Delete the exes
     cmds:
       - pwsh -NoProfile -Command "Remove-Item open-perf-hud.exe, oph-cli.exe -ErrorAction SilentlyContinue"
+
   icon:
-    desc: Regenera icon.ico (desde el diseño de icon.svg) y rsrc.syso (requiere go install github.com/akavel/rsrc@latest)
+    desc: Regenerate icon.ico (from the icon.svg design) and rsrc.syso (requires go install github.com/akavel/rsrc@latest)
     cmds:
       - pwsh -NoProfile -File scripts/gen-icon.ps1
       - "$HOME/go/bin/rsrc.exe -ico icon.ico -arch amd64 -o rsrc.syso"
