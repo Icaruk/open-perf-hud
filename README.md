@@ -55,6 +55,58 @@ FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe w
 
 Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
 
+## Architecture
+
+```mermaid
+flowchart TB
+  TICK["SetTimer every refreshMs (500 ms)"]
+
+  subgraph src["Windows APIs"]
+    ETW["ETW real-time session<br/>DXGI · D3D9 · DxgKrnl<br/>present events"]
+    FG["GetForegroundWindow<br/>GetWindowThreadProcessId"]
+    ST["GetSystemTimes"]
+    MS["GlobalMemoryStatusEx"]
+    PDHC["PDH GPU Engine (engtype_3D)<br/>PDH GPU Adapter Memory (LUID)"]
+    NV["NVML<br/>utilization · temperature"]
+    DX["DXGI EnumAdapters1 / GetDesc1"]
+  end
+
+  subgraph col["Collectors"]
+    TR["FPSTracker<br/>1 s window per PID, 2 ms dedup"]
+    CPU["CPUMeter"]
+    RAM["ramStats"]
+    GPU["GPUMeter"]
+  end
+
+  SNP["Snapshot<br/>process · fps · cpu · gpu · vram · ram · temp"]
+
+  subgraph ui["Overlay window — layered, topmost, click-through"]
+    LINES["lines()<br/>group items, bold titles"]
+    DIB["GDI paint into DIB<br/>Consolas 400/700"]
+    ALPHA["applyAlpha<br/>text α · background α · grey level"]
+    ULW["UpdateLayeredWindow<br/>moves, resizes and paints"]
+  end
+
+  MENU["Tray menu / hotkey"] --> CFG["config.json"]
+
+  ETW --> TR
+  FG -->|"foreground PID"| TR
+  FG -->|"foreground PID"| SNP
+  ST --> CPU --> SNP
+  MS --> RAM --> SNP
+  PDHC --> GPU
+  NV --> GPU
+  DX --> GPU
+  GPU --> SNP
+  TR --> SNP
+  TICK --> SNP
+  CFG --> LINES
+  CFG --> DIB
+  SNP --> LINES --> DIB --> ALPHA --> ULW
+```
+
+FPS comes from ETW presents attributed to the foreground PID (no injection); GPU% prefers NVML because it matches what Steam and the NVIDIA panel report; everything else is a direct kernel32 / PDH / DXGI call. Only the ETW session can need admin.
+
 ## How it works
 
 - **FPS**: real-time ETW session subscribed to Microsoft-Windows-DXGI, -D3D9 and -DxgKrnl, filtered by event ID to the present events that are actually emitted (DXGI Present_Stop / PresentMultiplaneOverlay_Stop, D3D9 Present_Stop, DxgKrnl PresentHistory_Start / PresentHistoryDetailed_Start). One-second sliding counter per PID; PID = process owning the foreground window. Pairs reported by both runtime and kernel are deduplicated within 2 ms.
