@@ -65,7 +65,7 @@ func runOverlayMode() {
 		}
 		restartRunning()
 		// espera a que la instancia anterior cierre y suelte el mutex
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			time.Sleep(100 * time.Millisecond)
 			if mu, existed = grabInstanceMutex(); !existed {
 				break

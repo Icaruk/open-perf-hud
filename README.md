@@ -53,7 +53,7 @@ FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe w
 
 ## Development
 
-Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
+Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (runs `go fix` first, then both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task modernize` (`go fix`, standalone), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
 
 ## Architecture
 

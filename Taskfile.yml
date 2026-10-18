@@ -4,8 +4,14 @@ tasks:
   default:
     deps: [build]
 
+  modernize:
+    desc: Apply Go modernization rewrites (built-in go fix analyzers)
+    cmds:
+      - go fix ./...
+
   build:
     desc: Build the overlay GUI (open-perf-hud.exe) and the CLI (oph-cli.exe)
+    deps: [modernize]
     cmds:
       - go build -trimpath -ldflags "-s -w -H windowsgui" -o open-perf-hud.exe .
       - go build -trimpath -ldflags "-s -w" -o oph-cli.exe .

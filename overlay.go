@@ -630,13 +630,7 @@ func (ov *overlay) ensureSurface(w, h int32) {
 func applyAlpha(px []byte, textA, bgA, gray int) {
 	for i := 0; i < len(px); i += 4 {
 		b, g, r := int(px[i]), int(px[i+1]), int(px[i+2])
-		m := b
-		if g > m {
-			m = g
-		}
-		if r > m {
-			m = r
-		}
+		m := max(r, max(g, b))
 		a1 := m * textA / 255
 		px[i] = uint8(b * textA / 255 * gray / 255)
 		px[i+1] = uint8(g * textA / 255 * gray / 255)
