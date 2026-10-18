@@ -1,0 +1,10 @@
+# build output
+*.exe
+*.exe~
+
+# local settings written at runtime
+config.json
+
+# scratch
+cli-out.txt
+*.log
