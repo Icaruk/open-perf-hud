@@ -1,33 +1,51 @@
+# [⬇ Download latest release](https://github.com/Icaruk/open-perf-hud/releases/)
+
 # <img src="icon.svg" width="28" align="top" alt=""> Open Perf HUD
 
-FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe with no external dependencies (no RTSS, no PresentMon).
+FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games. One `.exe`, nothing else to install.
 
-> **[Download open-perf-hud.exe](https://github.com/Icaruk/open-perf-hud/releases/latest/download/open-perf-hud.exe)** — 4 MB, run it and it sits in the tray.
-
-<img width="459" height="36" alt="image" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
+<img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
 
 ## Requirements
 
-- **Windows 10 1709+ / 11**, x64. Win32 + ETW + PDH; no other OS.
-- **No install, no dependencies**: a single `.exe`, no RTSS/Afterburner/PresentMon.
-- **Admin**: only for the ETW session (the overlay asks for UAC when it is actually needed). `--cli` and `--probe` never need it, but FPS then depends on the session starting.
-- **Any GPU**: CPU, RAM, FPS, GPU% and VRAM work on NVIDIA, AMD and Intel. **GPU temperature is NVIDIA-only** (`nvml.dll` from the driver); on AMD/Intel it shows `n/d`.
-- **Borderless windowed**, not exclusive fullscreen (see limitations).
+- **Windows 10 or 11, 64-bit.**
+- **Nothing to install**: a single `.exe`. No RTSS, no Afterburner, no extra tool running in the background.
+- **Any graphics card** (NVIDIA, AMD or Intel). GPU temperature is NVIDIA-only; on other cards it shows `n/d`.
+- **Borderless windowed**, not exclusive fullscreen (see [limitations](#known-limitations)).
+- **Administrator**: Windows may ask for permission once. Say yes for frame rate; if you say no, everything except FPS keeps working.
 
 ## Usage
 
-| Command | What it does |
+1. Download `open-perf-hud.exe` and run it. It goes to the system tray and starts drawing the overlay.
+2. Start your game in borderless windowed mode.
+3. Right-click the **tray icon** to move it, resize the text, change colours, or pick which metrics you see.
+
+- The overlay is click-through and always on top: it never takes clicks from the game.
+- It follows the screen of the game window you have focused.
+- Hotkey `CTRL+SHIFT+O` (configurable) hides and shows it.
+- Launching it again asks **Retry** (close the running one) or **Cancel** (keep it).
+- FPS is the frame rate of the app you have focused. On the desktop, or in apps that draw frames from a separate process (browsers), it shows `—`.
+
+## Settings
+
+Everything is in the tray menu, and saved to `config.json` next to the exe:
+
+| Menu | What it changes |
 |---|---|
-| `open-perf-hud.exe` | Overlay. Asks for UAC only on systems that require admin to open the ETW session. |
-| `open-perf-hud.exe --cli` | Console metrics, no UAC. FPS only if ETW starts; CPU/GPU/RAM always. |
-| `open-perf-hud.exe --probe 10s` | Diagnostic tool: histogram of received ETW events. |
+| Metrics | which values are shown (name, FPS, CPU, GPU, GPU temp, VRAM %, VRAM GB, RAM %, RAM GB) |
+| Position | which corner of the screen |
+| Text size | `xs` · `sm` · `md` · `lg` |
+| Text color | 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
+| Background | opacity of the black box behind the text, 0–100 % |
+| Layout | one metric per line, or all on one line |
+| Margin | distance from the screen edge |
+| Inner margin | padding inside the box |
+| Item spacing | gap between items, `none` packs them tight |
+| Offset left / right / top / bottom | extra pixels from each edge, 0–50 |
 
-- Single instance: launching a second time asks **Retry** (close the running one and take over) or **Cancel** (keep it).
-- The overlay is click-through: control it from the **tray icon** (click for the menu) or the configured **hotkey** (`CTRL+SHIFT+O` by default).
-- It draws on the monitor of the game (it follows the foreground window).
-- FPS = frames presented by the foreground process in the last second. On the desktop it shows `—`. Apps that present from a child process (Chromium/Electron browsers) may also show `—`; games present from their own process and count fine.
+Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU 10%`), and the labels are bold.
 
-## Config
+## Config file
 
 `config.json` next to the exe (created with defaults on the first menu change):
 
@@ -59,24 +77,36 @@ FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe w
 - `opacity`: 0–255 (text).
 - `bgOpacity`: 0–100 (% of the black background; 0 = text only).
 - `textColor`: `White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — text grayscale (255/224/198/171/158/138/110/74/0); `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a).
-- `gpuTemp` (`GPU 58°C`): via NVML from the NVIDIA driver, no admin; on AMD/Intel it shows `n/d`. CPU temperature: not available without a kernel driver (out of scope by design).
 - `innerMargin`: `none|xs|sm|md|lg` (inner padding).
-- `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between lines; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
+- `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between items; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
 - `fontSize`: `xs|sm|md|lg` (12/15/18/24 px).
 - `margin`: `none|xs|sm|md|lg` (0/4/8/12/24 px).
 - `offsetLeft|offsetRight|offsetTop|offsetBottom`: `none|2|4|8|10|12|14|16|20|24|30|40|50` px extra from each edge on top of `margin` (they push the overlay inwards from that edge; combinable).
 - `orientation`: `vertical` (one metric per line) or `horizontal` (everything on one line).
-- `metrics`: one boolean per metric; VRAM and RAM merge `%` and GB when both are on (`VRAM 35% 8.8/9.8 GB`). Consecutive items of the same kind do not repeat the label (`GPU 10% · 64°C | CPU 10%`); labels (CPU, GPU…) are bold. Everything is also in the tray menu (version title, Metrics section, Show/Hide, Position/Text size/Text color/Background, separator, Layout/Margin/Inner margin/Item spacing/Offset left-right-top-bottom, Exit).
+- `metrics`: one boolean per metric; VRAM and RAM merge `%` and GB when both are on (`VRAM 35% 8.8/9.8 GB`).
+- `refreshMs`: how often the overlay updates (500 = twice per second).
+- `hotkey`: any combination of `CTRL`/`SHIFT`/`ALT` and a key, e.g. `CTRL+SHIFT+O`; empty disables it.
+
+Command line (for scripting and bug reports):
+
+| Command | What it does |
+|---|---|
+| `open-perf-hud.exe` | The overlay. |
+| `open-perf-hud.exe --cli` | Same metrics, printed to the console, no overlay and no admin prompt. |
+| `open-perf-hud.exe --probe 10s` | Diagnostic histogram of the frame-rate events received. Useful when FPS shows `—`. |
 
 ## Known limitations
 
-- **Exclusive fullscreen**: not supported (an overlay window cannot draw over an exclusive mode). Use borderless windowed. This is the same reason other overlays inject DLLs into the game; this app injects nothing.
+- **Exclusive fullscreen**: not supported (a window cannot draw over exclusive mode). Use borderless windowed. This is why other overlays inject DLLs into the game; this app injects nothing.
 - **GPU%**: NVML (NVIDIA) when available — the same number Steam and the NVIDIA panel show. Otherwise PDH "GPU Engine" counters, which read lower under load.
 - **FPS**: captures Present events from DXGI, D3D9 and DxgKrnl (PresentHistory) — covers DXGI/D3D9 windowed and borderless. **Vulkan/OpenGL may not be counted on Windows 11**: some builds do not emit DxgKrnl's PresentHistory_Start (0xAB). If a Vulkan game shows `—`, run `--probe 10s` with it in the foreground to see which event IDs DxgKrnl emits.
+- **CPU temperature**: not available without a kernel driver, so it is out of scope by design (no driver, no reboot).
 
 ## Development
 
 Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (runs `go fix` first, then both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task modernize` (`go fix`, standalone), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
+
+Platform: Win32 + ETW + PDH + DXGI + NVML, all through `syscall`/`golang.org/x/sys/windows` — no cgo, no third-party packages in the binary.
 
 ## Architecture
 
