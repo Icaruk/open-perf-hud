@@ -1,10 +1,10 @@
-# [⬇ Download latest release](https://github.com/Icaruk/open-perf-hud/releases/)
-
 # <img src="icon.svg" width="28" align="top" alt=""> Open Perf HUD
 
 FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games. One `.exe`, nothing else to install.
 
 <img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
+
+## [⬇ Download latest release](https://github.com/Icaruk/open-perf-hud/releases/download/v1.0.0/open-perf-hud.exe)
 
 ## Requirements
 
