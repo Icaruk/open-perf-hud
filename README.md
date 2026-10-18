@@ -4,6 +4,14 @@ FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe w
 
 <img width="459" height="36" alt="image" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
 
+## Requirements
+
+- **Windows 10 1709+ / 11**, x64. Win32 + ETW + PDH; no other OS.
+- **No install, no dependencies**: a single `.exe`, no RTSS/Afterburner/PresentMon.
+- **Admin**: only for the ETW session (the overlay asks for UAC when it is actually needed). `--cli` and `--probe` never need it, but FPS then depends on the session starting.
+- **Any GPU**: CPU, RAM, FPS, GPU% and VRAM work on NVIDIA, AMD and Intel. **GPU temperature is NVIDIA-only** (`nvml.dll` from the driver); on AMD/Intel it shows `n/d`.
+- **Borderless windowed**, not exclusive fullscreen (see limitations).
+
 ## Usage
 
 | Command | What it does |
