@@ -2,6 +2,8 @@
 
 FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe with no external dependencies (no RTSS, no PresentMon).
 
+<img width="459" height="36" alt="image" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
+
 ## Usage
 
 | Command | What it does |
@@ -43,7 +45,18 @@ FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe w
 }
 ```
 
-`corner`: 0 top-left · 1 top-right · 2 bottom-left · 3 bottom-right. `opacity`: 0–255 (text). `bgOpacity`: 0–100 (% of the black background; 0 = text only). `textColor`: `White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — text grayscale (255/224/198/171/158/138/110/74/0); `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a). `gpuTemp` (`GPU 58°C`): via NVML from the NVIDIA driver, no admin; on AMD/Intel it shows `n/d`. CPU temperature: not available without a kernel driver (out of scope by design). `innerMargin`: `none|xs|sm|md|lg` (inner padding). `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between lines; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all). `fontSize`: `xs|sm|md|lg` (12/15/18/24 px). `margin`: `none|xs|sm|md|lg` (0/4/8/12/24 px). `offsetLeft|offsetRight|offsetTop|offsetBottom`: `none|2|4|8|10|12|14|16|20|24|30|40|50` px extra from each edge on top of `margin` (they push the overlay inwards from that edge; combinable). `orientation`: `vertical` (one metric per line) or `horizontal` (everything on one line). `metrics`: one boolean per metric; VRAM and RAM merge `%` and GB when both are on (`VRAM 35% 8.8/9.8 GB`). Consecutive items of the same kind do not repeat the label (`GPU 10% · 64°C | CPU 10%`); labels (CPU, GPU…) are bold. Everything is also in the tray menu (version title, Metrics section, Show/Hide, Position/Text size/Text color/Background, separator, Layout/Margin/Inner margin/Item spacing/Offset left-right-top-bottom, Exit).
+- `corner`: 0 top-left · 1 top-right · 2 bottom-left · 3 bottom-right.
+- `opacity`: 0–255 (text).
+- `bgOpacity`: 0–100 (% of the black background; 0 = text only).
+- `textColor`: `White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — text grayscale (255/224/198/171/158/138/110/74/0); `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a).
+- `gpuTemp` (`GPU 58°C`): via NVML from the NVIDIA driver, no admin; on AMD/Intel it shows `n/d`. CPU temperature: not available without a kernel driver (out of scope by design).
+- `innerMargin`: `none|xs|sm|md|lg` (inner padding).
+- `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between lines; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
+- `fontSize`: `xs|sm|md|lg` (12/15/18/24 px).
+- `margin`: `none|xs|sm|md|lg` (0/4/8/12/24 px).
+- `offsetLeft|offsetRight|offsetTop|offsetBottom`: `none|2|4|8|10|12|14|16|20|24|30|40|50` px extra from each edge on top of `margin` (they push the overlay inwards from that edge; combinable).
+- `orientation`: `vertical` (one metric per line) or `horizontal` (everything on one line).
+- `metrics`: one boolean per metric; VRAM and RAM merge `%` and GB when both are on (`VRAM 35% 8.8/9.8 GB`). Consecutive items of the same kind do not repeat the label (`GPU 10% · 64°C | CPU 10%`); labels (CPU, GPU…) are bold. Everything is also in the tray menu (version title, Metrics section, Show/Hide, Position/Text size/Text color/Background, separator, Layout/Margin/Inner margin/Item spacing/Offset left-right-top-bottom, Exit).
 
 ## Known limitations
 
