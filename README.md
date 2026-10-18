@@ -2,6 +2,8 @@
 
 FPS / CPU / GPU / RAM overlay for windowed and borderless games. A single .exe with no external dependencies (no RTSS, no PresentMon).
 
+> **[Download open-perf-hud.exe](https://github.com/Icaruk/open-perf-hud/releases/latest/download/open-perf-hud.exe)** — 4 MB, run it and it sits in the tray.
+
 <img width="459" height="36" alt="image" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
 
 ## Requirements
