@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -58,10 +59,33 @@ var marginPx = map[string]int{"none": 0, "xs": 4, "sm": 8, "md": 12, "lg": 24}
 var spacings = []string{"xl", "lg", "md", "sm", "xs", "none"} // orden del menú
 var spacingPx = map[string]int{"none": 0, "xs": 2, "sm": 5, "md": 8, "lg": 12, "xl": 20}
 
-var orientations = []string{"vertical", "horizontal"}
-var orientNames = [2]string{"Vertical", "Horizontal"}
+// orientation: valor en config.json + nombre en el menú.
+type orientation struct {
+	val, name string
+}
+
+var orientations = []orientation{{"vertical", "Vertical"}, {"horizontal", "Horizontal"}}
+
+// orientationOf devuelve la orientación con ese val (la primera si no existe;
+// LoadConfig valida antes).
+func orientationOf(val string) orientation {
+	for _, o := range orientations {
+		if o.val == val {
+			return o
+		}
+	}
+	return orientations[0]
+}
 
 var bgPcts = []int{0, 10, 25, 50, 75, 100}
+
+// bgLabels: etiquetas de menú de bgPcts.
+var bgLabels = func() (out []string) {
+	for _, p := range bgPcts {
+		out = append(out, fmt.Sprintf("%d%%", p))
+	}
+	return out
+}()
 
 // Offsets de cada borde: "none" = 0, el resto son los px del propio label.
 var offOpts = []string{"none", "2", "4", "8", "10", "12", "14", "16", "20", "24", "30", "40", "50"}
@@ -96,10 +120,14 @@ func LoadConfig() Config {
 	if cfg.RefreshMs < 100 {
 		cfg.RefreshMs = defaultCfg.RefreshMs
 	}
+	// corner fuera de rango haría panic al abrir el menú (cornerNames[Corner])
+	if cfg.Corner < 0 || cfg.Corner > 3 {
+		cfg.Corner = defaultCfg.Corner
+	}
 	if cfg.BgOpacity < 0 || cfg.BgOpacity > 100 {
 		cfg.BgOpacity = defaultCfg.BgOpacity
 	}
-	if !slices.Contains(orientations, cfg.Orientation) {
+	if orientationOf(cfg.Orientation).val != cfg.Orientation {
 		cfg.Orientation = defaultCfg.Orientation
 	}
 	fixStr(&cfg.FontSize, fontPx, defaultCfg.FontSize)

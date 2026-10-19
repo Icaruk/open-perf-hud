@@ -56,6 +56,17 @@ func main() {
 	}
 }
 
+// startMeters: config y medidores comunes a overlay y CLI. Si ETW no arranca
+// (normalmente sin admin) tracker y cleanup vuelven nil y cada modo decide:
+// el overlay prueba UAC, la CLI avisa y sigue sin FPS.
+func startMeters() (Config, *CPUMeter, *GPUMeter, *FPSTracker, func(), error) {
+	cfg := LoadConfig()
+	cpu := &CPUMeter{}
+	gpu := NewGPUMeter()
+	tracker, cleanup, err := StartFPS(context.Background())
+	return cfg, cpu, gpu, tracker, cleanup, err
+}
+
 func runOverlayMode() {
 	mu, existed := grabInstanceMutex()
 	if existed {
@@ -77,12 +88,7 @@ func runOverlayMode() {
 		}
 	}
 
-	cfg := LoadConfig()
-	cpu := &CPUMeter{}
-	gpu := NewGPUMeter()
-	defer gpu.Close()
-	ctx := context.Background()
-	tracker, cleanup, err := StartFPS(ctx)
+	cfg, cpu, gpu, tracker, cleanup, err := startMeters()
 	if err != nil {
 		// En muchos sistemas la sesión ETW arranca sin admin; si este la rechaza, UAC.
 		if elevate() {
@@ -90,8 +96,8 @@ func runOverlayMode() {
 			return
 		}
 		fmt.Println("Warning: ETW unavailable, FPS disabled:", err)
-		tracker, cleanup = nil, nil
 	}
+	defer gpu.Close()
 	if err := runOverlay(cfg, tracker, cpu, gpu, cleanup); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
@@ -99,16 +105,10 @@ func runOverlayMode() {
 }
 
 func runCLI() {
-	cfg := LoadConfig()
-	cpu := &CPUMeter{}
-	gpu := NewGPUMeter()
+	cfg, cpu, gpu, tracker, cleanup, err := startMeters()
 	defer gpu.Close()
-
-	ctx := context.Background()
-	tracker, cleanup, err := StartFPS(ctx)
 	if err != nil {
 		fmt.Println("Warning: no FPS without admin (", err, "). System metrics still work.")
-		tracker, cleanup = nil, nil
 	}
 	if cleanup != nil {
 		defer cleanup()
@@ -119,26 +119,8 @@ func runCLI() {
 	defer tick.Stop()
 	printLine := func() {
 		s := collectSnapshot(tracker, cpu, gpu)
-		fps := "  —"
-		if s.ProcName != "" && s.FPS > 0 {
-			fps = fmt.Sprintf("%3d", s.FPS)
-		}
-		name := s.ProcName
-		if name == "" {
-			name = "—"
-		}
-		// "n/d" si el sensor no reporta
-		opt := func(ok bool, f string, a ...any) string {
-			if !ok {
-				return "n/d"
-			}
-			return fmt.Sprintf(f, a...)
-		}
-		gpuTxt := opt(s.GPU >= 0, "%.0f%%", s.GPU)
-		vramTxt := opt(s.VRAMUsed >= 0, "%.1f/%.1fGB", s.VRAMUsed, s.VRAMTotal)
-		tmpTxt := opt(s.GPUTemp >= 0, "%.0f°C", s.GPUTemp)
-		fmt.Printf("\r%-24s FPS %s  CPU %5.1f%%  GPU %5s %s  VRAM %11s  RAM %2d%% %.1f/%.1fGB",
-			name, fps, s.CPU, gpuTxt, tmpTxt, vramTxt, s.RAMLoad, s.RAMUsed, s.RAMTotal)
+		fmt.Printf("\r%-24s FPS %s  CPU %5.1f%%  GPU %5s %s  VRAM %11s  RAM %2d%% %s",
+			s.NameTxt(), s.FPSTxt(), s.CPU, s.GPUTxt(), s.TempTxt(), s.VRAMTxt(), s.RAMLoad, s.RAMTxt())
 	}
 	for range tick.C {
 		printLine()

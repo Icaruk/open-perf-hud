@@ -32,24 +32,12 @@ const (
 	wmRButtonUp  = 0x0205
 	wmLButtonUp  = 0x0202
 
-	trayMsg     = wmApp + 1
-	idTimer     = 1
-	idHotkey    = 1
-	menuToggle  = 1001
-	menuQuit    = 1003
-	idCorner    = 1100 // + índice
-	idFont      = 1200 // + índice
-	idMargin    = 1300 // + índice
-	idOrient    = 1400 // + índice
-	idMetric    = 1500 // + índice (metricLabels)
-	idBg        = 1600 // + índice (bgPcts)
-	idInner     = 1700 // + índice (margins, reutilizado como inner margin)
-	idSpacing   = 1800 // + índice (spacings)
-	idColor     = 1900 // + índice (colorOpts)
-	idOffLeft   = 2000 // + índice (offOpts)
-	idOffRight  = 2100
-	idOffTop    = 2200
-	idOffBottom = 2300
+	trayMsg    = wmApp + 1
+	idTimer    = 1
+	idHotkey   = 1
+	menuToggle = 1001
+	menuQuit   = 1003
+	idMetric   = 1500 // + índice (metricLabels); las demás bases las asigna init() sobre menuOpts
 
 	swHide           = 0
 	swShowNoActivate = 4
@@ -394,35 +382,19 @@ func (ov *overlay) lines() [][]seg {
 	var its []item
 
 	if m.Name {
-		name := "—"
-		if s.ProcName != "" {
-			name = s.ProcName
-		}
-		its = append(its, item{val: name})
+		its = append(its, item{val: s.NameTxt()})
 	}
 	if m.FPS {
-		fps := "  —"
-		if s.ProcName != "" && s.FPS > 0 {
-			fps = fmt.Sprintf("%3d", s.FPS)
-		}
-		its = append(its, item{title: "FPS", val: fps})
+		its = append(its, item{title: "FPS", val: s.FPSTxt()})
 	}
 	if m.CPUPct {
 		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU)})
 	}
 	if m.GPUPct {
-		gpu := "n/d"
-		if s.GPU >= 0 {
-			gpu = fmt.Sprintf("%.0f%%", s.GPU)
-		}
-		its = append(its, item{title: "GPU", val: gpu})
+		its = append(its, item{title: "GPU", val: s.GPUTxt()})
 	}
 	if m.GPUTemp {
-		t := "n/d"
-		if s.GPUTemp >= 0 {
-			t = fmt.Sprintf("%.0f°C", s.GPUTemp)
-		}
-		its = append(its, item{title: "GPU", val: t})
+		its = append(its, item{title: "GPU", val: s.TempTxt()})
 	}
 	if m.VRAMPct || m.VRAMGB {
 		var parts []string
@@ -434,14 +406,7 @@ func (ov *overlay) lines() [][]seg {
 			}
 		}
 		if m.VRAMGB {
-			switch {
-			case s.VRAMUsed >= 0 && s.VRAMTotal > 0:
-				parts = append(parts, fmt.Sprintf("%.1f/%.1f GB", s.VRAMUsed, s.VRAMTotal))
-			case s.VRAMUsed >= 0:
-				parts = append(parts, fmt.Sprintf("%.1f GB", s.VRAMUsed))
-			default:
-				parts = append(parts, "n/d")
-			}
+			parts = append(parts, s.VRAMTxt())
 		}
 		its = append(its, item{title: "VRAM", val: strings.Join(parts, " ")})
 	}
@@ -451,7 +416,7 @@ func (ov *overlay) lines() [][]seg {
 			parts = append(parts, fmt.Sprintf("%.0f%%", float64(s.RAMLoad)))
 		}
 		if m.RAMGB {
-			parts = append(parts, fmt.Sprintf("%.1f/%.1f GB", s.RAMUsed, s.RAMTotal))
+			parts = append(parts, s.RAMTxt())
 		}
 		its = append(its, item{title: "RAM", val: strings.Join(parts, " ")})
 	}
@@ -735,6 +700,43 @@ func appendOptions(menu uintptr, label string, opts []string, cur string, base i
 	procAppendMenuW.Call(menu, mfPopup, sub, uintptr(unsafe.Pointer(t)))
 }
 
+// menuOpt: submenú excluyente de la bandeja. Esta tabla alimenta buildMenu
+// (opciones y marca según cur()) y handleMenu (set(i) aplica el índice
+// elegido); init() asigna bases de id sin solape a partir de 2000.
+type menuOpt struct {
+	label string
+	opts  []string
+	cur   func(*overlay) string
+	set   func(*overlay, int)
+	base  int
+	sep   bool // separador antes de esta entrada
+}
+
+var menuOpts = []menuOpt{
+	{"Position", cornerNames[:], func(o *overlay) string { return cornerNames[o.cfg.Corner] }, func(o *overlay, i int) { o.cfg.Corner = i }, 0, false},
+	{"Text size", fontSizes, func(o *overlay) string { return o.cfg.FontSize }, func(o *overlay, i int) { o.cfg.FontSize = fontSizes[i]; o.makeFont() }, 0, false},
+	{"Text color", colorOpts, func(o *overlay) string { return o.cfg.TextColor }, func(o *overlay, i int) { o.cfg.TextColor = colorOpts[i] }, 0, false},
+	{"Background", bgLabels, func(o *overlay) string { return fmt.Sprintf("%d%%", o.cfg.BgOpacity) }, func(o *overlay, i int) { o.cfg.BgOpacity = bgPcts[i] }, 0, false},
+	{"Layout", []string{orientations[0].name, orientations[1].name},
+		func(o *overlay) string { return orientationOf(o.cfg.Orientation).name },
+		func(o *overlay, i int) { o.cfg.Orientation = orientations[i].val }, 0, true},
+	{"Margin", margins, func(o *overlay) string { return o.cfg.Margin }, func(o *overlay, i int) { o.cfg.Margin = margins[i] }, 0, false},
+	{"Inner margin", margins, func(o *overlay) string { return o.cfg.InnerMargin }, func(o *overlay, i int) { o.cfg.InnerMargin = margins[i] }, 0, false},
+	{"Item spacing", spacings, func(o *overlay) string { return o.cfg.Spacing }, func(o *overlay, i int) { o.cfg.Spacing = spacings[i] }, 0, false},
+	{"Offset left", offOpts, func(o *overlay) string { return o.cfg.OffLeft }, func(o *overlay, i int) { o.cfg.OffLeft = offOpts[i] }, 0, false},
+	{"Offset right", offOpts, func(o *overlay) string { return o.cfg.OffRight }, func(o *overlay, i int) { o.cfg.OffRight = offOpts[i] }, 0, false},
+	{"Offset top", offOpts, func(o *overlay) string { return o.cfg.OffTop }, func(o *overlay, i int) { o.cfg.OffTop = offOpts[i] }, 0, false},
+	{"Offset bottom", offOpts, func(o *overlay) string { return o.cfg.OffBottom }, func(o *overlay, i int) { o.cfg.OffBottom = offOpts[i] }, 0, false},
+}
+
+func init() {
+	base := 2000 // > menuToggle/menuQuit/idMetric+len(metricLabels)
+	for i := range menuOpts {
+		menuOpts[i].base = base
+		base += len(menuOpts[i].opts)
+	}
+}
+
 func (ov *overlay) buildMenu() uintptr {
 	menu, _, _ := procCreatePopupMenu.Call()
 	if menu == 0 {
@@ -749,7 +751,7 @@ func (ov *overlay) buildMenu() uintptr {
 	add("Open Perf HUD v"+version, mfGrayed, 0) // título, no clicable
 	sep()
 
-	// Metrics: sección propia arriba del todo
+	// Metrics: conmutadores bool, sección propia arriba del todo
 	sub, _, _ := procCreatePopupMenu.Call()
 	ptrs := ov.cfg.metricPtrs()
 	for i, label := range metricLabels {
@@ -769,27 +771,12 @@ func (ov *overlay) buildMenu() uintptr {
 		toggleTxt = "Show overlay"
 	}
 	add(toggleTxt, 0, menuToggle)
-	appendOptions(menu, "Position", cornerNames[:], cornerNames[ov.cfg.Corner], idCorner)
-	appendOptions(menu, "Text size", fontSizes, ov.cfg.FontSize, idFont)
-	appendOptions(menu, "Text color", colorOpts, ov.cfg.TextColor, idColor)
-	bgLabels := make([]string, len(bgPcts))
-	for i, p := range bgPcts {
-		bgLabels[i] = fmt.Sprintf("%d%%", p)
+	for _, m := range menuOpts {
+		if m.sep {
+			sep() // — ajustes finos —
+		}
+		appendOptions(menu, m.label, m.opts, m.cur(ov), m.base)
 	}
-	appendOptions(menu, "Background", bgLabels, fmt.Sprintf("%d%%", ov.cfg.BgOpacity), idBg)
-	sep() // — ajustes finos —
-	curOrient := orientNames[0]
-	if ov.cfg.Orientation == "horizontal" {
-		curOrient = orientNames[1]
-	}
-	appendOptions(menu, "Layout", orientNames[:], curOrient, idOrient)
-	appendOptions(menu, "Margin", margins, ov.cfg.Margin, idMargin)
-	appendOptions(menu, "Inner margin", margins, ov.cfg.InnerMargin, idInner)
-	appendOptions(menu, "Item spacing", spacings, ov.cfg.Spacing, idSpacing)
-	appendOptions(menu, "Offset left", offOpts, ov.cfg.OffLeft, idOffLeft)
-	appendOptions(menu, "Offset right", offOpts, ov.cfg.OffRight, idOffRight)
-	appendOptions(menu, "Offset top", offOpts, ov.cfg.OffTop, idOffTop)
-	appendOptions(menu, "Offset bottom", offOpts, ov.cfg.OffBottom, idOffBottom)
 	sep()
 	add("Exit", 0, menuQuit)
 	return menu
@@ -832,47 +819,18 @@ func (ov *overlay) handleMenu(cmd uintptr) {
 		ov.toggle()
 	case cmd == menuQuit:
 		procDestroyWindow.Call(ov.hwnd)
-	case cmd >= idCorner && cmd < idCorner+4:
-		ov.cfg.Corner = int(cmd - idCorner)
-		ov.cfgChanged()
-	case cmd >= idFont && cmd < idFont+uintptr(len(fontSizes)):
-		ov.cfg.FontSize = fontSizes[cmd-idFont]
-		ov.makeFont()
-		ov.cfgChanged()
-	case cmd >= idMargin && cmd < idMargin+uintptr(len(margins)):
-		ov.cfg.Margin = margins[cmd-idMargin]
-		ov.cfgChanged()
-	case cmd >= idOrient && cmd < idOrient+uintptr(len(orientations)):
-		ov.cfg.Orientation = orientations[cmd-idOrient]
-		ov.cfgChanged()
 	case cmd >= idMetric && cmd < idMetric+uintptr(len(metricLabels)):
 		p := ov.cfg.metricPtrs()[cmd-idMetric]
 		*p = !*p
 		ov.cfgChanged()
-	case cmd >= idBg && cmd < idBg+uintptr(len(bgPcts)):
-		ov.cfg.BgOpacity = bgPcts[cmd-idBg]
-		ov.cfgChanged()
-	case cmd >= idInner && cmd < idInner+uintptr(len(margins)):
-		ov.cfg.InnerMargin = margins[cmd-idInner]
-		ov.cfgChanged()
-	case cmd >= idSpacing && cmd < idSpacing+uintptr(len(spacings)):
-		ov.cfg.Spacing = spacings[cmd-idSpacing]
-		ov.cfgChanged()
-	case cmd >= idColor && cmd < idColor+uintptr(len(colorOpts)):
-		ov.cfg.TextColor = colorOpts[cmd-idColor]
-		ov.cfgChanged()
-	case cmd >= idOffLeft && cmd < idOffLeft+uintptr(len(offOpts)):
-		ov.cfg.OffLeft = offOpts[cmd-idOffLeft]
-		ov.cfgChanged()
-	case cmd >= idOffRight && cmd < idOffRight+uintptr(len(offOpts)):
-		ov.cfg.OffRight = offOpts[cmd-idOffRight]
-		ov.cfgChanged()
-	case cmd >= idOffTop && cmd < idOffTop+uintptr(len(offOpts)):
-		ov.cfg.OffTop = offOpts[cmd-idOffTop]
-		ov.cfgChanged()
-	case cmd >= idOffBottom && cmd < idOffBottom+uintptr(len(offOpts)):
-		ov.cfg.OffBottom = offOpts[cmd-idOffBottom]
-		ov.cfgChanged()
+	default:
+		for _, m := range menuOpts {
+			if cmd >= uintptr(m.base) && cmd < uintptr(m.base)+uintptr(len(m.opts)) {
+				m.set(ov, int(cmd)-m.base)
+				ov.cfgChanged()
+				return
+			}
+		}
 	}
 }
 
