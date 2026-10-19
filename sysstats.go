@@ -419,3 +419,45 @@ func collectSnapshot(tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter) Snapshot
 		GPUTemp: GPUTempC(),
 	}
 }
+
+// ---- Texto de cada métrica, compartido por CLI y overlay ----
+// ("—" / "n/d" si el sensor no reporta; una sola copia de cada decisión).
+
+func fmtND(ok bool, f string, a ...any) string {
+	if !ok {
+		return "n/d"
+	}
+	return fmt.Sprintf(f, a...)
+}
+
+func (s Snapshot) NameTxt() string {
+	if s.ProcName == "" {
+		return "—"
+	}
+	return s.ProcName
+}
+
+func (s Snapshot) FPSTxt() string {
+	if s.ProcName == "" || s.FPS <= 0 {
+		return "  —"
+	}
+	return fmt.Sprintf("%3d", s.FPS)
+}
+
+func (s Snapshot) GPUTxt() string  { return fmtND(s.GPU >= 0, "%.0f%%", s.GPU) }
+func (s Snapshot) TempTxt() string { return fmtND(s.GPUTemp >= 0, "%.0f°C", s.GPUTemp) }
+
+func (s Snapshot) VRAMTxt() string {
+	switch {
+	case s.VRAMUsed >= 0 && s.VRAMTotal > 0:
+		return fmt.Sprintf("%.1f/%.1f GB", s.VRAMUsed, s.VRAMTotal)
+	case s.VRAMUsed >= 0:
+		return fmt.Sprintf("%.1f GB", s.VRAMUsed)
+	default:
+		return "n/d"
+	}
+}
+
+func (s Snapshot) RAMTxt() string {
+	return fmt.Sprintf("%.1f/%.1f GB", s.RAMUsed, s.RAMTotal)
+}
