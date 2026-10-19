@@ -1,4 +1,4 @@
-# <img src="icon.svg" width="48" align="top" alt=""> Open Perf HUD  
+# <img src="icon.svg" width="48" alt="logo"> Open Perf HUD  
 
 [![Release](https://img.shields.io/github/v/release/Icaruk/open-perf-hud?label=release&sort=semver)](https://github.com/Icaruk/open-perf-hud/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)](https://github.com/Icaruk/open-perf-hud)
