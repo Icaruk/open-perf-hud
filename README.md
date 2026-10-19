@@ -109,19 +109,19 @@ Command line (for scripting and bug reports):
 
 ## FAQ
 
-**Is it safe with anti-cheat?**
+**Is it safe with anti-cheat?**  
 Yes — it never injects code or reads the game's memory. It only listens to the frame events Windows itself broadcasts (see [Why this one](#why-this-one)).
 
-**Why does it ask for administrator permission?**
+**Why does it ask for administrator permission?**  
 Only the FPS counter needs it. Say no and everything except FPS keeps working.
 
-**Why does my game need borderless windowed?**
+**Why does my game need borderless windowed?**  
 In exclusive fullscreen no app can draw over the game — that's a Windows rule, not a limitation of this tool. Borderless windowed looks identical and allows overlays.
 
-**FPS shows `—`?**
+**FPS shows `—`?**  
 Expected on the desktop and in browsers (they don't count as the focused app). If it happens in a Vulkan/OpenGL game on Windows 11, run `open-perf-hud.exe --probe 10s` with the game focused — see [limitations](#known-limitations).
 
-**Where is the CPU temperature?**
+**Where is the CPU temperature?**  
 Windows doesn't expose it without a kernel driver, and this tool refuses to install one on purpose.
 
 ## Known limitations
