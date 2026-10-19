@@ -12,11 +12,11 @@ FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games. One
 
 ## Why this one
 
-- **One `.exe`, nothing else.** No installer, no background service, no runtime to keep updated. Delete the file and it's gone.
-- **No injection, no hooks.** It listens to the frame events Windows already emits (the same source as Intel's PresentMon). Nothing is written into the game's memory — anti-cheat has nothing to flag.
-- **Light.** Plain Win32 + GDI, no browser engine, no .NET, no cgo.
-- **Configurable from the tray.** Position, size, colors and metrics in a click; one `config.json` next to the exe.
-- **Scriptable.** `--cli` prints the same numbers to the console; `--probe` diagnoses FPS issues.
+- **One `.exe`, nothing else:** no installer, no background service (it only runs while exe is open), no runtime to keep updated. Delete the file and it's gone.
+- **No injection, no hooks:** it listens to the frame events Windows already emits (the same source as Intel's PresentMon). Nothing is written into the game's memory so anti-cheat has nothing to flag.
+- **Light:** single 3.87 MB executable, no dependencies.
+- **Configurable from the tray:** position, size, colors and metrics in a click. File `config.json` sits next to the exe.
+- **Scriptable:** `--cli` prints the same numbers to the console. `--probe` diagnoses FPS issues.
 
 ## Requirements
 
