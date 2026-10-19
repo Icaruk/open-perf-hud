@@ -25,7 +25,7 @@ Config: config.json next to the exe, or the system tray menu.
 `)
 }
 
-// elevate relanza el proceso pidiendo UAC. Devuelve false si el usuario cancela.
+// elevate relaunches the process asking for UAC. Returns false if the user cancels.
 func elevate() bool {
 	exe, _ := os.Executable()
 	verb, _ := windows.UTF16PtrFromString("runas")
@@ -34,7 +34,7 @@ func elevate() bool {
 }
 
 func main() {
-	etw.DisableLogging() // goetw loguea JSON a stderr; lo callamos (probe imprime lo suyo)
+	etw.DisableLogging() // goetw logs JSON to stderr; silence it (probe prints its own)
 	args := os.Args[1:]
 	switch {
 	case len(args) == 0:
@@ -56,9 +56,9 @@ func main() {
 	}
 }
 
-// startMeters: config y medidores comunes a overlay y CLI. Si ETW no arranca
-// (normalmente sin admin) tracker y cleanup vuelven nil y cada modo decide:
-// el overlay prueba UAC, la CLI avisa y sigue sin FPS.
+// startMeters: config and meters shared by overlay and CLI. If ETW fails to
+// start (usually no admin) tracker and cleanup come back nil and each mode
+// decides: the overlay tries UAC, the CLI warns and continues without FPS.
 func startMeters() (Config, *CPUMeter, *GPUMeter, *FPSTracker, func(), error) {
 	cfg := LoadConfig()
 	cpu := &CPUMeter{}
@@ -70,12 +70,12 @@ func startMeters() (Config, *CPUMeter, *GPUMeter, *FPSTracker, func(), error) {
 func runOverlayMode() {
 	mu, existed := grabInstanceMutex()
 	if existed {
-		windows.CloseHandle(windows.Handle(mu)) // no retenemos el mutex ajeno
+		windows.CloseHandle(windows.Handle(mu)) // we don't hold the other instance's mutex
 		if !askRestart() {
 			return
 		}
 		restartRunning()
-		// espera a que la instancia anterior cierre y suelte el mutex
+		// wait for the previous instance to exit and release the mutex
 		for range 30 {
 			time.Sleep(100 * time.Millisecond)
 			if mu, existed = grabInstanceMutex(); !existed {
@@ -84,15 +84,15 @@ func runOverlayMode() {
 			windows.CloseHandle(windows.Handle(mu))
 		}
 		if existed {
-			return // no terminó a tiempo; no arrancamos una segunda instancia
+			return // didn't exit in time; don't start a second instance
 		}
 	}
 
 	cfg, cpu, gpu, tracker, cleanup, err := startMeters()
 	if err != nil {
-		// En muchos sistemas la sesión ETW arranca sin admin; si este la rechaza, UAC.
+		// On many systems the ETW session starts without admin; if this one rejects it, UAC.
 		if elevate() {
-			windows.CloseHandle(windows.Handle(mu)) // el hijo elevado debe poder crearlo
+			windows.CloseHandle(windows.Handle(mu)) // the elevated child must be able to create it
 			return
 		}
 		fmt.Println("Warning: ETW unavailable, FPS disabled:", err)

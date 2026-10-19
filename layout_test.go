@@ -5,19 +5,19 @@ import (
 	"unsafe"
 )
 
-// applyAlpha: fondo negro con bgA, texto blanco con textA (premultiplicado).
+// applyAlpha: black background with bgA, white text with textA (premultiplied).
 func TestApplyAlpha(t *testing.T) {
 	px := []byte{
-		0, 0, 0, 0, // fondo
-		255, 255, 255, 0, // texto
-		128, 128, 128, 0, // antialias 50%
+		0, 0, 0, 0, // background
+		255, 255, 255, 0, // text
+		128, 128, 128, 0, // 50% antialias
 	}
 	applyAlpha(px, 200, 64, 255)
-	// fondo: alpha=bgA, color 0
+	// background: alpha=bgA, color 0
 	if px[3] != 64 {
 		t.Fatalf("bg alpha = %d, want 64", px[3])
 	}
-	// texto: color premult = 255*200/255 = 200; alpha = composite sobre el fondo
+	// text: premult color = 255*200/255 = 200; alpha = composite over the background
 	wantTextA := byte(255*200/255 + 64*(255-255*200/255)/255)
 	if px[7] != wantTextA {
 		t.Fatalf("text alpha = %d, want %d", px[7], wantTextA)
@@ -35,23 +35,23 @@ func TestApplyAlpha(t *testing.T) {
 	}
 }
 
-// applyAlpha con brillo reducido: el color escala, el alpha no.
+// applyAlpha with reduced brightness: color scales, alpha doesn't.
 func TestApplyAlphaGray(t *testing.T) {
-	px := []byte{255, 255, 255, 0, 0, 0, 0, 0} // texto, fondo
-	applyAlpha(px, 255, 0, 100)                // gris 100 (~39% blanco)
+	px := []byte{255, 255, 255, 0, 0, 0, 0, 0} // text, background
+	applyAlpha(px, 255, 0, 100)                // gray 100 (~39% white)
 	if px[1] != byte(255*100/255) {
 		t.Fatalf("text color = %d, want %d", px[1], 255*100/255)
 	}
 	if px[3] != 255 {
-		t.Fatalf("text alpha = %d, want 255 (el gris no toca el alpha)", px[3])
+		t.Fatalf("text alpha = %d, want 255 (gray doesn't touch alpha)", px[3])
 	}
 	if px[7] != 0 {
 		t.Fatalf("bg alpha = %d, want 0", px[7])
 	}
 }
 
-// Los structs deben replicar el layout C x64 exacto; un pad erróneo
-// desplaza campos y las APIs Win32 leen basura (v. bug del tray icon).
+// Structs must replicate the exact x64 C layout; a wrong pad shifts fields
+// and the Win32 APIs read garbage (see the tray icon bug).
 func TestStructLayoutC(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -69,19 +69,20 @@ func TestStructLayoutC(t *testing.T) {
 			t.Errorf("%s: size %d, want %d (broken C layout)", c.name, c.got, c.want)
 		}
 	}
-	// offsets críticos de NOTIFYICONDATAW
+	// critical NOTIFYICONDATAW offsets
 	var nid notifyIconDataW
 	if o := unsafe.Offsetof(nid.UFlags); o != 20 {
-		t.Errorf("UFlags en offset %d, esperado 20", o)
+		t.Errorf("UFlags at offset %d, want 20", o)
 	}
 	if o := unsafe.Offsetof(nid.UCallbackMessage); o != 24 {
-		t.Errorf("UCallbackMessage en offset %d, esperado 24", o)
+		t.Errorf("UCallbackMessage at offset %d, want 24", o)
 	}
 	if o := unsafe.Offsetof(nid.HIcon); o != 32 {
-		t.Errorf("HIcon en offset %d, esperado 32", o)
+		t.Errorf("HIcon at offset %d, want 32", o)
 	}
-	// DXGI_ADAPTER_DESC1 ya no se parsea con struct fijo: hay dos layouts en
-	// la naturaleza (con/sin Flags) y parseAdapterDesc elige por validación.
+	// DXGI_ADAPTER_DESC1 is no longer parsed with a fixed struct: there are
+	// two layouts in the wild (with/without Flags) and parseAdapterDesc picks
+	// by validation.
 }
 
 func TestParseAdapterDesc(t *testing.T) {
@@ -108,17 +109,18 @@ func TestParseAdapterDesc(t *testing.T) {
 		b := mk(first)
 		d, ok := parseAdapterDesc(b[:])
 		if !ok || d.dedicated != 10<<30 || d.luidLow != 0x139db || d.luidHigh != 0 {
-			t.Errorf("flagsFirst=%v: got %+v ok=%v, querida 10GiB luid 139db-0", first, d, ok)
+			t.Errorf("flagsFirst=%v: got %+v ok=%v, want 10GiB luid 139db-0", first, d, ok)
 		}
 	}
 }
 
 func TestColorGray(t *testing.T) {
-	// Grey/Grey-dark 1 replican los grises de Steam (9e9e9e/8a8a8a).
+	// Grey/Grey-dark 1 replicate Steam's greys (9e9e9e/8a8a8a).
 	if colorGray["Grey"] != 0x9e || colorGray["Grey-dark 1"] != 0x8a {
-		t.Fatalf("grises Steam mal: %d/%d", colorGray["Grey"], colorGray["Grey-dark 1"])
+		t.Fatalf("Steam greys wrong: %d/%d", colorGray["Grey"], colorGray["Grey-dark 1"])
 	}
-	if len(colorOpts) != len(colorGray) || len(colorOpts) > 10 {
-		t.Fatalf("paleta inconsistente: %d/%d", len(colorOpts), len(colorGray))
+	// Dynamic has no fixed gray (sampleGray picks it); the rest map 1:1.
+	if len(colorOpts) != len(colorGray)+1 || colorOpts[0] != "Dynamic" || len(colorOpts) > 10 {
+		t.Fatalf("inconsistent palette: %d/%d (+Dynamic)", len(colorOpts), len(colorGray))
 	}
 }

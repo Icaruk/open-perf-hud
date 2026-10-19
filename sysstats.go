@@ -47,7 +47,7 @@ func (c *CPUMeter) Percent() float64 {
 	if dk+du == 0 {
 		return 0
 	}
-	busy := (dk - di) + du // kernel time incluye idle
+	busy := (dk - di) + du // kernel time includes idle
 	pct := float64(busy) / float64(dk+du) * 100
 	if pct < 0 {
 		pct = 0
@@ -85,7 +85,7 @@ const pdhMoreData = 0x800007D2
 
 type pdhFmtCounterValue struct {
 	CStatus uint32
-	Value   float64 // con PDH_FMT_DOUBLE
+	Value   float64 // with PDH_FMT_DOUBLE
 }
 
 type pdhFmtCounterValueItemW struct {
@@ -115,7 +115,7 @@ func NewGPUMeter() *GPUMeter {
 		p, _ := syscall.UTF16PtrFromString(c.path)
 		var hc uintptr
 		procPdhAddEnglishCounterW.Call(hq, uintptr(unsafe.Pointer(p)), 0, uintptr(unsafe.Pointer(&hc)))
-		*c.dst = hc // 0 si falla: esa métrica queda n/d
+		*c.dst = hc // 0 on failure: that metric stays n/a
 	}
 	return g
 }
@@ -133,15 +133,15 @@ func (g *GPUMeter) Close() {
 	g.hq, g.hcEng, g.hcMem = 0, 0, 0
 }
 
-// sumCounter suma las instancias de un counter wildcard tras collect.
-// keep filtra por nombre de instancia (nil = todas).
+// sumCounter sums the instances of a wildcard counter after collect.
+// keep filters by instance name (nil = all).
 func (g *GPUMeter) sumCounter(hc uintptr, keep func(string) bool) (float64, bool) {
 	if hc == 0 {
 		return 0, false
 	}
 	var bufSize, itemCount uint32
-	// ojo: la DLL escribe el tamaño en el 3er arg y la cuenta en el 4º
-	// (verificado empíricamente; el nombre de los params de la MSDN engaña)
+	// note: the DLL writes the size in the 3rd arg and the count in the 4th
+	// (verified empirically; the MSDN param names are misleading)
 	r1, _, _ := procPdhGetFormattedCounterArrayW.Call(
 		hc, pdhFmtDouble,
 		uintptr(unsafe.Pointer(&bufSize)), uintptr(unsafe.Pointer(&itemCount)), 0)
@@ -167,12 +167,12 @@ func (g *GPUMeter) sumCounter(hc uintptr, keep func(string) bool) (float64, bool
 }
 
 func (g *GPUMeter) Percent() float64 {
-	// Collect siempre: VRAMUsedGB lee el counter de memoria de esta misma query.
+	// Always Collect: VRAMUsedGB reads the memory counter from this same query.
 	if g.hq != 0 {
 		procPdhCollectQueryData.Call(g.hq)
 	}
-	// NVML (SM%, lo mismo que muestran Steam/panel NVIDIA) manda si está;
-	// el counter GPU Engine 3D lee sistemáticamente más bajo.
+	// NVML (SM%, same as Steam/NVIDIA panel show) wins when present;
+	// the GPU Engine 3D counter consistently reads lower.
 	if d, ok := nvmlDev(); ok {
 		var u struct{ GPU, Mem uint32 } // nvmlUtilization_t
 		if r, _, _ := procNvUtil.Call(d, uintptr(unsafe.Pointer(&u))); r == 0 && u.GPU <= 100 {
@@ -181,7 +181,7 @@ func (g *GPUMeter) Percent() float64 {
 		}
 	}
 	if g.hq == 0 {
-		return -1 // contador no disponible
+		return -1 // counter unavailable
 	}
 	if sum, ok := g.sumCounter(g.hcEng, nil); ok {
 		if sum > 100 {
@@ -192,14 +192,14 @@ func (g *GPUMeter) Percent() float64 {
 	return g.lastGpu
 }
 
-// VRAMUsedGB devuelve GB dedicados usados por el adaptador principal; -1 si no hay counter.
-// Llamar después de Percent (que hace el Collect de la query).
+// VRAMUsedGB returns dedicated GB used by the main adapter; -1 if no counter.
+// Call after Percent (which Collects the query).
 func (g *GPUMeter) VRAMUsedGB() float64 {
 	if g.hq == 0 {
 		return -1
 	}
 	if sum, ok := g.sumCounter(g.hcMem, func(name string) bool {
-		// PDH escribe el LUID en hex mayúscula ("luid_0x..._0x000139DB_phys_0")
+		// PDH writes the LUID in uppercase hex ("luid_0x..._0x000139DB_phys_0")
 		name = strings.ToLower(name)
 		for _, l := range mainAdapterLUIDs {
 			if strings.Contains(name, l) {
@@ -225,8 +225,8 @@ var iidDXGIFactory1 = windows.GUID{
 	Data4: [8]byte{0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87},
 }
 
-// comCall invoca el método COM del slot n del objeto (slot 2 = Release).
-// obj se mantiene unsafe.Pointer para que el GC lo vea vivo durante la llamada.
+// comCall invokes the COM method at slot n of the object (slot 2 = Release).
+// obj stays an unsafe.Pointer so the GC sees it alive during the call.
 func comCall(obj unsafe.Pointer, slot uintptr, args ...uintptr) uintptr {
 	vt := *(*unsafe.Pointer)(obj)
 	fp := *(*uintptr)(unsafe.Add(vt, int(slot*unsafe.Sizeof(uintptr(0)))))
@@ -238,14 +238,14 @@ func comCall(obj unsafe.Pointer, slot uintptr, args ...uintptr) uintptr {
 
 var (
 	vramTotalCache   = -1.0
-	mainAdapterLUIDs []string // substrings que identifican el adaptador principal en PDH
+	mainAdapterLUIDs []string // substrings identifying the main adapter in PDH
 )
 
-// parseAdapterDesc saca VRAM dedicada y LUID del buffer de GetDesc1.
-// Hay DOS layouts en la naturaleza: el canónico (Flags tras Description,
-// DVM@280, Luid@304) y otro sin Flags (DVM@272, Luid@296), visto
-// empíricamente en una VM con RTX 3080. Se elige por validación: Flags es
-// siempre <=4; si [256] es mayor, ahí va el VendorId.
+// parseAdapterDesc extracts dedicated VRAM and LUID from the GetDesc1 buffer.
+// There are TWO layouts in the wild: the canonical one (Flags after
+// Description, DVM@280, Luid@304) and another without Flags (DVM@272,
+// Luid@296), seen empirically on a VM with an RTX 3080. Chosen by
+// validation: Flags is always <=4; if [256] is larger, that is the VendorId.
 type adapterDesc struct {
 	dedicated         uintptr
 	luidLow, luidHigh uint32
@@ -257,12 +257,12 @@ func parseAdapterDesc(buf []byte) (adapterDesc, bool) {
 		return *(*uintptr)(unsafe.Pointer(&buf[off]))
 	}
 	plausible := func(v uintptr) bool { return v >= 64<<20 && v <= 1<<40 }
-	off := 280 // canónico
+	off := 280 // canonical
 	if *(*uint32)(unsafe.Pointer(&buf[256])) > 4 {
-		off = 272 // sin Flags
+		off = 272 // without Flags
 	}
 	if !plausible(read(off)) {
-		off = 552 - off // 272<->280: prueba el otro layout
+		off = 552 - off // 272<->280: try the other layout
 		if !plausible(read(off)) {
 			return d, false
 		}
@@ -273,8 +273,8 @@ func parseAdapterDesc(buf []byte) (adapterDesc, bool) {
 	return d, true
 }
 
-// vramTotalGB: memoria dedicada del adaptador con más VRAM (0 si DXGI falla).
-// No cambia en caliente: se calcula una vez.
+// vramTotalGB: dedicated memory of the adapter with the most VRAM (0 if DXGI
+// fails). Never changes at runtime: computed once.
 func vramTotalGB() float64 {
 	if vramTotalCache >= 0 {
 		return vramTotalCache
@@ -289,7 +289,7 @@ func vramTotalGB() float64 {
 	var best uintptr
 	for i := uintptr(0); ; i++ {
 		var adapter unsafe.Pointer
-		// vtable[12] = EnumAdapters1; 0x887A0002 DXGI_ERROR_NOT_FOUND rompe el bucle
+		// vtable[12] = EnumAdapters1; 0x887A0002 DXGI_ERROR_NOT_FOUND breaks the loop
 		if comCall(factory, 12, i, uintptr(unsafe.Pointer(&adapter))) != 0 {
 			break
 		}
@@ -299,8 +299,8 @@ func vramTotalGB() float64 {
 		d, ok := parseAdapterDesc(buf[:])
 		if ok && d.dedicated > best {
 			best = d.dedicated
-			// PDH nombra instancias "luid_0x..._0x..._phys_N"; el orden high/low
-			// no está documentado, guardamos ambos por si acaso.
+			// PDH names instances "luid_0x..._0x..._phys_N"; the high/low order
+			// is undocumented, keep both just in case.
 			mainAdapterLUIDs = []string{
 				fmt.Sprintf("luid_0x%08x_0x%08x", d.luidHigh, d.luidLow),
 				fmt.Sprintf("luid_0x%08x_0x%08x", d.luidLow, d.luidHigh),
@@ -311,10 +311,10 @@ func vramTotalGB() float64 {
 	return vramTotalCache
 }
 
-// ---- Proceso en foco ----
+// ---- Foreground process ----
 
-// ForegroundProcess devuelve PID y nombre del proceso con la ventana en primer plano.
-// Cadena vacía si es el escritorio o nosotros mismos.
+// ForegroundProcess returns the PID and name of the process owning the
+// foreground window. Empty string if it is the desktop or ourselves.
 func ForegroundProcess() (uint32, string) {
 	hwnd := windows.GetForegroundWindow()
 	if hwnd == 0 {
@@ -343,7 +343,7 @@ func procName(pid uint32) string {
 	return strings.TrimSuffix(name, ".exe")
 }
 
-// ---- GPU temp (NVML, la lib del propio driver NVIDIA; sin admin) ----
+// ---- GPU temp (NVML, NVIDIA's own driver lib; no admin needed) ----
 
 var (
 	modnvml    = windows.NewLazySystemDLL("nvml.dll")
@@ -356,7 +356,7 @@ var (
 var nvmlTried, nvmlOK bool
 var nvmlDevice uintptr
 
-// nvmlDev devuelve el handle del primer dispositivo, cacheado tras el primer intento.
+// nvmlDev returns the handle of the first device, cached after the first attempt.
 func nvmlDev() (uintptr, bool) {
 	if !nvmlTried {
 		nvmlTried = true
@@ -370,7 +370,7 @@ func nvmlDev() (uintptr, bool) {
 	return nvmlDevice, nvmlOK
 }
 
-// GPUTempC: °C del sensor de la GPU, -1 si NVML no disponible (AMD/Intel/sin driver).
+// GPUTempC: GPU sensor °C, -1 if NVML unavailable (AMD/Intel/no driver).
 func GPUTempC() float64 {
 	d, ok := nvmlDev()
 	if !ok {
@@ -383,18 +383,18 @@ func GPUTempC() float64 {
 	return float64(t)
 }
 
-// ---- Snapshot compartido por CLI y overlay ----
+// ---- Snapshot shared by CLI and overlay ----
 
 type Snapshot struct {
 	ProcName  string
 	FPS       int
 	CPU       float64
-	GPU       float64 // -1 = no disponible
-	GPUTemp   float64 // °C, -1 = no disponible
+	GPU       float64 // -1 = unavailable
+	GPUTemp   float64 // °C, -1 = unavailable
 	RAMLoad   uint32
 	RAMUsed   float64
 	RAMTotal  float64
-	VRAMUsed  float64 // GB, -1 = no disponible
+	VRAMUsed  float64 // GB, -1 = unavailable
 	VRAMTotal float64
 }
 
@@ -420,12 +420,12 @@ func collectSnapshot(tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter) Snapshot
 	}
 }
 
-// ---- Texto de cada métrica, compartido por CLI y overlay ----
-// ("—" / "n/d" si el sensor no reporta; una sola copia de cada decisión).
+// ---- Per-metric text, shared by CLI and overlay ----
+// ("—" / "n/a" when the sensor doesn't report; a single copy of each decision).
 
 func fmtND(ok bool, f string, a ...any) string {
 	if !ok {
-		return "n/d"
+		return "n/a"
 	}
 	return fmt.Sprintf(f, a...)
 }
@@ -454,7 +454,7 @@ func (s Snapshot) VRAMTxt() string {
 	case s.VRAMUsed >= 0:
 		return fmt.Sprintf("%.1f GB", s.VRAMUsed)
 	default:
-		return "n/d"
+		return "n/a"
 	}
 }
 

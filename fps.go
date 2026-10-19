@@ -10,7 +10,7 @@ import (
 	"github.com/tekert/goetw/etw"
 )
 
-// Providers y eventos Present (manifests de GameTechDev/PresentMon, MIT).
+// Present providers and events (GameTechDev/PresentMon manifests, MIT).
 const (
 	provDXGI    = "{CA11C036-0102-4A2D-A6AD-F03CFED5D3C9}"
 	provD3D9    = "{783ACA0A-790E-4D7F-8451-AA850511C6B9}"
@@ -22,10 +22,10 @@ const (
 )
 
 const (
-	// Contamos eventos Stop/Detailed: en Win11 el juego emite Present_Stop pero
-	// Present_Start no dispara (verificado con --probe); Stop = 1 por Present,
-	// siempre. 0xD7 es la vía kernel (Vulkan/OpenGL). El dedup de 2ms del tracker
-	// absorbe el solape runtime+kernel del mismo present.
+	// We count Stop/Detailed events: on Win11 the game emits Present_Stop but
+	// Present_Start never fires (verified with --probe); Stop = 1 per Present,
+	// always. 0xD7 is the kernel path (Vulkan/OpenGL). The tracker's 2ms dedup
+	// absorbs the runtime+kernel overlap of the same present.
 	dxgiPresentStop     = 0x2B
 	dxgiMPOPresentStop  = 0x38
 	d3d9PresentStop     = 0x2
@@ -33,7 +33,7 @@ const (
 	dxgPresentHistDet   = 0xD7 // PresentHistoryDetailed_Start, Win11
 )
 
-// FPSTracker cuenta eventos Present por PID en ventana deslizante de 1s.
+// FPSTracker counts Present events per PID in a 1s sliding window.
 type FPSTracker struct {
 	mu     sync.Mutex
 	events map[uint32][]time.Time
@@ -43,10 +43,10 @@ type FPSTracker struct {
 func (t *FPSTracker) add(pid uint32, ts time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Un present windowed emite evento runtime (DXGI/D3D9) Y kernel (PresentHistory):
-	// dedup simétrico de 2ms sobre el timestamp DEL EVENTO. El consumer entrega en
-	// ráfagas de buffer; con time.Now() (hora de consumo) una ráfaga entera colapsa
-	// a 1 y el FPS sale siempre 1. Techo ~500 FPS.
+	// A windowed present emits a runtime event (DXGI/D3D9) AND a kernel one
+	// (PresentHistory): symmetric 2ms dedup on the EVENT timestamp. The consumer
+	// delivers in buffer bursts; with time.Now() (consumption time) a whole burst
+	// collapsed to 1 and FPS was always 1. Ceiling ~500 FPS.
 	if la, ok := t.last[pid]; ok && ts.Sub(la) < 2*time.Millisecond {
 		t.last[pid] = ts
 		return
@@ -58,7 +58,7 @@ func (t *FPSTracker) add(pid uint32, ts time.Time) {
 		cut++
 	}
 	t.events[pid] = ev[cut:]
-	// ponytail: limpieza por tamaño, suficiente para sesiones largas
+	// ponytail: cleanup by size, enough for long sessions
 	if len(t.events) > 256 {
 		for p, evs := range t.events {
 			if len(evs) == 0 || ts.Sub(evs[len(evs)-1]) > 30*time.Second {
@@ -69,7 +69,7 @@ func (t *FPSTracker) add(pid uint32, ts time.Time) {
 	}
 }
 
-// FPS frames del pid en el último segundo.
+// FPS frames of pid in the last second.
 func (t *FPSTracker) FPS(pid uint32) int {
 	now := time.Now()
 	t.mu.Lock()
@@ -103,8 +103,8 @@ func presentProvider(guidStr string, kw uint64, ids ...uint16) (etw.Provider, er
 	return p, nil
 }
 
-// providerDefs: los 3 providers de Present. Con filtered=true añade el filtro
-// de event-ID (conteo); sin él llegan todos los eventos (probe).
+// providerDefs: the 3 Present providers. With filtered=true adds the event-ID
+// filter (counting); without it all events arrive (probe).
 var providerDefs = []struct {
 	name string
 	guid string
@@ -132,8 +132,8 @@ func providers(filtered bool) ([]etw.Provider, error) {
 	return out, nil
 }
 
-// StartFPS crea la sesión ETW (requiere admin) y el consumer en background.
-// Devuelve el tracker y una func de cleanup.
+// StartFPS creates the ETW session (admin required) and a background consumer.
+// Returns the tracker and a cleanup func.
 func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
 	tracker := &FPSTracker{events: make(map[uint32][]time.Time), last: make(map[uint32]time.Time)}
 
@@ -165,8 +165,9 @@ func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
 	return tracker, cleanup, nil
 }
 
-// runProbe: habilita los 3 providers SIN filtro de ID y histograma lo que llega.
-// Verificación empírica de los IDs de Present (ejecutar como admin con un juego abierto).
+// runProbe: enables the 3 providers WITHOUT an ID filter and histograms what
+// arrives. Empirical verification of the Present IDs (run as admin with a game
+// open).
 func runProbe(d time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
@@ -182,7 +183,7 @@ func runProbe(d time.Duration) {
 	s := etw.NewRealTimeSession("OpenPerfHudProbe")
 	for _, prov := range provs {
 		if err := s.EnableProvider(prov); err != nil {
-			fmt.Printf("error ETW (¿no eres admin?): %v\n", err)
+			fmt.Printf("ETW error (not admin?): %v\n", err)
 			return
 		}
 	}
@@ -210,7 +211,7 @@ func runProbe(d time.Duration) {
 		return false
 	}
 	if err := c.Start(); err != nil {
-		fmt.Println("error consumer:", err)
+		fmt.Println("consumer error:", err)
 		return
 	}
 	defer c.Stop()
@@ -222,7 +223,7 @@ func runProbe(d time.Duration) {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(hist) == 0 {
-		fmt.Println("0 eventos. ¿Ejecutaste como admin? ¿Hay algo presentando frames?")
+		fmt.Println("0 events. Did you run as admin? Is anything presenting frames?")
 		return
 	}
 	names := make([]string, 0, len(hist))
@@ -238,7 +239,7 @@ func runProbe(d time.Duration) {
 		}
 		sort.Ints(ids)
 		for _, id := range ids {
-			fmt.Printf("  Id 0x%04X (%5d): %d eventos  %s\n", id, id, hist[n][uint16(id)], probeLabels[n][uint16(id)])
+			fmt.Printf("  Id 0x%04X (%5d): %d events  %s\n", id, id, hist[n][uint16(id)], probeLabels[n][uint16(id)])
 		}
 	}
 }

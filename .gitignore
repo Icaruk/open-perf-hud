@@ -8,3 +8,4 @@ config.json
 # scratch
 cli-out.txt
 *.log
+.tgrep/

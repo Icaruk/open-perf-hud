@@ -1,7 +1,7 @@
-# Smoke: overlay 6s sin morir + CLI 4s con linea de metricas.
+# Smoke: overlay alive for 6s + CLI printing a metrics line for 4s.
 $ErrorActionPreference = 'Stop'
 
-# instancia previa: el arranque preguntaría reiniciar/cancelar y colgaría el smoke
+# a previous instance would make startup ask restart/cancel and hang the smoke
 Stop-Process -Name open-perf-hud -Force -ErrorAction SilentlyContinue
 
 $p = Start-Process -PassThru -FilePath .\open-perf-hud.exe -WorkingDirectory (Get-Location)

@@ -1,6 +1,6 @@
-# Genera icon.ico desde el diseño de icon.svg (gauge FPS).
-# Uso: pwsh -NoProfile -File scripts/gen-icon.ps1
-# ponytail: System.Drawing dibuja el mismo gauge que el SVG; sin dependencias externas.
+# Generates icon.ico from the icon.svg design (FPS gauge).
+# Usage: pwsh -NoProfile -File scripts/gen-icon.ps1
+# ponytail: System.Drawing draws the same gauge as the SVG; no external dependencies.
 Add-Type -AssemblyName System.Drawing
 
 function New-RoundRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
@@ -28,7 +28,7 @@ function New-IconBitmap([int]$size) {
         $p.StartCap = 'Round'; $p.EndCap = 'Round'
         $p
     }
-    # circulo del gauge: centro (64,61) r=34, en coords 128 escaladas
+    # gauge circle: center (64,61) r=34, in scaled 128 coords
     $cx = 64*$s; $cy = 61*$s; $R = 34*$s
     $rect = New-Object System.Drawing.RectangleF (($cx-$R), ($cy-$R), (2*$R), (2*$R))
     $g.DrawArc((New-Pen '#1E293B' (10*$s)), $rect, 135, 270)
@@ -50,7 +50,7 @@ function New-IconBitmap([int]$size) {
 }
 
 function New-BmpEntry([System.Drawing.Bitmap]$bmp) {
-    # entrada ICO formato BMP 32bpp (bottom-up BGRA + mascara AND en cero)
+    # ICO entry in BMP format 32bpp (bottom-up BGRA + AND mask of zeros)
     $w = $bmp.Width; $h = $bmp.Height
     $ms = New-Object System.IO.MemoryStream
     $bw = New-Object System.IO.BinaryWriter($ms)
@@ -92,4 +92,4 @@ for ($i = 0; $i -lt $blobs.Count; $i++) {
 foreach ($blob in $blobs) { $bw.Write([byte[]]$blob) }
 $bw.Flush()
 [System.IO.File]::WriteAllBytes(($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($out)), $ms.ToArray())
-Write-Host "icon.ico generado: $((Get-Item $out).Length) bytes"
+Write-Host "icon.ico generated: $((Get-Item $out).Length) bytes"

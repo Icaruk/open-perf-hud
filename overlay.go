@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ---- constantes Win32 (lo mínimo) ----
+// ---- Win32 constants (the minimum) ----
 
 const (
 	wsExLayered     = 0x00080000
@@ -37,7 +37,7 @@ const (
 	idHotkey   = 1
 	menuToggle = 1001
 	menuQuit   = 1003
-	idMetric   = 1500 // + índice (metricLabels); las demás bases las asigna init() sobre menuOpts
+	idMetric   = 1500 // + index (metricLabels); the other bases are assigned by init() over menuOpts
 
 	swHide           = 0
 	swShowNoActivate = 4
@@ -51,6 +51,9 @@ const (
 	ulwAlpha    = 0x2
 	acSrcAlpha  = 0x1
 	dibRGBColor = 0x0
+	srcCopy     = 0x00CC0020
+
+	smpW, smpH = 64, 8 // size of the Dynamic sampling DIB
 
 	nimAdd         = 0
 	nifMessage     = 0x1
@@ -106,6 +109,7 @@ var (
 	procCreateSolidBrush    = modgee32.NewProc("CreateSolidBrush")
 	procCreateCompatDC      = modgee32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection    = modgee32.NewProc("CreateDIBSection")
+	procStretchBlt          = modgee32.NewProc("StretchBlt")
 	procUpdateLayeredWnd    = moduser32.NewProc("UpdateLayeredWindow")
 	procShellNotifyIconW    = modshell32.NewProc("Shell_NotifyIconW")
 	procLoadIconW           = moduser32.NewProc("LoadIconW")
@@ -137,7 +141,7 @@ type paintStruct struct {
 	FRestore    int32
 	FIncUpdate  int32
 	RgbReserved [32]uint8
-	_           [4]uint8 // tamaño 72 como PAINTSTRUCT en C
+	_           [4]uint8 // size 72 like PAINTSTRUCT in C
 }
 
 type wndClassExW struct {
@@ -235,10 +239,15 @@ type overlay struct {
 	w, h      int32
 	lineH     int32
 
-	memDC  uintptr // DC en memoria donde se pinta el DIB 32bpp
+	memDC  uintptr // memory DC where the 32bpp DIB is painted
 	memBmp uintptr
-	bits   unsafe.Pointer // pixels del DIB (BGRA premultiplicado tras applyAlpha)
+	bits   unsafe.Pointer // DIB pixels (premultiplied BGRA after applyAlpha)
 	bw, bh int32
+
+	smpDC   uintptr // sampling DC+DIB for Dynamic (StretchBlt of the background)
+	smpBmp  uintptr
+	smpBits unsafe.Pointer
+	dynDark bool // current background is considered dark (Dynamic hysteresis)
 }
 
 func hInstance() uintptr {
@@ -246,15 +255,15 @@ func hInstance() uintptr {
 	return h
 }
 
-// grabInstanceMutex crea el mutex de instancia única del overlay.
-// existed=true si ya hay otro proceso ejecutándolo.
+// grabInstanceMutex creates the overlay's single-instance mutex.
+// existed=true if another process is already running it.
 func grabInstanceMutex() (mu uintptr, existed bool) {
 	name, _ := syscall.UTF16PtrFromString(`Local\OpenPerfHudOverlay`)
 	mu, _, err := procCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(name)))
 	return mu, err == windows.ERROR_ALREADY_EXISTS
 }
 
-// askRestart pregunta si reiniciar la instancia que ya corre. true = reiniciar.
+// askRestart asks whether to restart the already-running instance. true = restart.
 func askRestart() bool {
 	t, _ := syscall.UTF16PtrFromString("Open Perf HUD is already running.\n\nRetry: restart it\nCancel: keep the current one")
 	c, _ := syscall.UTF16PtrFromString("Open Perf HUD")
@@ -262,8 +271,8 @@ func askRestart() bool {
 	return r1 == idRetry
 }
 
-// restartRunning pide a la instancia existente que cierre (WM_CLOSE); su mutex
-// queda libre al terminar el proceso.
+// restartRunning asks the existing instance to close (WM_CLOSE); its mutex
+// is freed when the process ends.
 func restartRunning() bool {
 	cname, _ := syscall.UTF16PtrFromString("OpenPerfHudWnd")
 	hwnd, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(cname)), 0)
@@ -274,7 +283,7 @@ func restartRunning() bool {
 	return true
 }
 
-// runOverlay crea ventana, bandeja y hotkey y ejecuta el message loop. Bloquea.
+// runOverlay creates window, tray and hotkey and runs the message loop. Blocks.
 func runOverlay(cfg Config, tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter, fpsCleanup func()) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -321,7 +330,7 @@ func runOverlay(cfg Config, tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter, f
 	var m msg
 	for {
 		r1, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
-		if r1 == 0 || r1 == ^uintptr(0) { // WM_QUIT o error
+		if r1 == 0 || r1 == ^uintptr(0) { // WM_QUIT or error
 			break
 		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
@@ -337,12 +346,12 @@ func (ov *overlay) wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr)
 		ov.position()
 
 	case wmEraseBkgnd:
-		return 1 // pintamos todo en WM_PAINT
+		return 1 // we paint everything in WM_PAINT
 
 	case wmPaint:
 		var ps paintStruct
 		procBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
-		procEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps))) // el pintado real va por UpdateLayeredWindow
+		procEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps))) // real painting goes through UpdateLayeredWindow
 
 	case trayMsg:
 		if lParam == wmRButtonUp || lParam == wmLButtonUp {
@@ -367,7 +376,7 @@ func (ov *overlay) wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr)
 	return ret
 }
 
-// seg: trozo de línea; los títulos de métrica (CPU, GPU…) van en negrita.
+// seg: a piece of a line; metric titles (CPU, GPU…) are bold.
 type seg struct {
 	s    string
 	bold bool
@@ -402,7 +411,7 @@ func (ov *overlay) lines() [][]seg {
 			if s.VRAMUsed >= 0 && s.VRAMTotal > 0 {
 				parts = append(parts, fmt.Sprintf("%.0f%%", s.VRAMUsed/s.VRAMTotal*100))
 			} else {
-				parts = append(parts, "n/d")
+				parts = append(parts, "n/a")
 			}
 		}
 		if m.VRAMGB {
@@ -421,8 +430,9 @@ func (ov *overlay) lines() [][]seg {
 		its = append(its, item{title: "RAM", val: strings.Join(parts, " ")})
 	}
 
-	// Agrupación: ítems consecutivos del mismo prefijo (CPU, GPU…) no repiten la
-	// palabra; en horizontal, dentro del grupo se separa con · y entre grupos con |.
+	// Grouping: consecutive items with the same prefix (CPU, GPU…) don't repeat
+	// the word; in horizontal, within a group they separate with · and between
+	// groups with |.
 	prev := ""
 	for i := range its {
 		if its[i].title == prev {
@@ -439,7 +449,7 @@ func (ov *overlay) lines() [][]seg {
 		return []seg{{s: it.title, bold: true}, {s: " " + it.val}}
 	}
 	if ov.cfg.Orientation == "horizontal" {
-		// px → espacios (~½ carácter): none pegado del todo, xs ajustado, xl amplio
+		// px → spaces (~½ character): none fully tight, xs snug, xl wide
 		g := spacingPx[ov.cfg.Spacing]
 		n := 0
 		if g > 0 {
@@ -450,7 +460,7 @@ func (ov *overlay) lines() [][]seg {
 		for i, it := range its {
 			if i > 0 {
 				sep := "|"
-				if it.title == "" { // misma sección que el anterior
+				if it.title == "" { // same section as the previous one
 					sep = "·"
 				}
 				out = append(out, seg{s: pad + sep + pad})
@@ -484,13 +494,13 @@ func (ov *overlay) makeFont() {
 	ov.hfont, ov.hfontBold = fh, fb
 }
 
-// step: alto de línea = fuente + separación (compacto, no la celda GDI completa).
+// step: line height = font + gap (compact, not the full GDI cell).
 func (ov *overlay) step() int32 {
 	return int32(fontPx[ov.cfg.FontSize] + spacingPx[ov.cfg.Spacing])
 }
 
-// textExtent devuelve el ancho/altura máximos de las líneas actuales
-// (por segmento: títulos en negrita miden distinto).
+// textExtent returns the max width/height of the current lines
+// (per segment: bold titles measure differently).
 func (ov *overlay) textExtent(lines [][]seg) (int32, int32) {
 	hdc, _, _ := procGetDC.Call(ov.hwnd)
 	var sz sizeStruct
@@ -520,7 +530,7 @@ func (ov *overlay) textExtent(lines [][]seg) (int32, int32) {
 	return maxW, h
 }
 
-// position reposiciona/redimensiona en el monitor del proceso en foco y repinta.
+// position repositions/resizes on the focused process's monitor and repaints.
 func (ov *overlay) position() {
 	lines := ov.lines()
 	w, lh := ov.textExtent(lines)
@@ -540,7 +550,7 @@ func (ov *overlay) position() {
 			wa = mi.RcWork
 		}
 	}
-	if wa == (rect{}) { // fallback pantalla primaria
+	if wa == (rect{}) { // primary screen fallback
 		cx, _, _ := procGetSystemMetrics.Call(0)
 		cy, _, _ := procGetSystemMetrics.Call(1)
 		wa = rect{Right: int32(cx), Bottom: int32(cy)}
@@ -558,17 +568,17 @@ func (ov *overlay) position() {
 	default:
 		x, y = wa.Right-m-w, wa.Bottom-m-h
 	}
-	// Offsets: px extra desde cada borde (offLeft/offTop empujan hacia dentro
-	// desde izquierda/arriba; offRight/offBottom desde derecha/abajo).
+	// Offsets: extra px from each edge (offLeft/offTop push inwards from
+	// left/top; offRight/offBottom from right/bottom).
 	x += int32(offPx(ov.cfg.OffLeft) - offPx(ov.cfg.OffRight))
 	y += int32(offPx(ov.cfg.OffTop) - offPx(ov.cfg.OffBottom))
 
-	// siempre: el margen/corner cambian x,y sin cambiar el tamaño
+	// always: margin/corner change x,y without changing the size
 	ov.render(lines, x, y, w, h)
 	ov.w, ov.h = w, h
 }
 
-// ensureSurface crea/redimensiona el DIB 32bpp donde se pinta.
+// ensureSurface creates/resizes the 32bpp DIB where painting happens.
 func (ov *overlay) ensureSurface(w, h int32) {
 	if ov.memBmp != 0 && ov.bw == w && ov.bh == h {
 		return
@@ -589,9 +599,9 @@ func (ov *overlay) ensureSurface(w, h int32) {
 	procSelectObject.Call(ov.memDC, bmp)
 }
 
-// applyAlpha: texto con alpha textA y gris gray (255=blanco puro), fondo
-// negro con alpha bgA (premultiplicado). GDI no escribe el canal alpha; lo
-// derivamos de la cobertura del píxel.
+// applyAlpha: text with alpha textA and gray gray (255=pure white), black
+// background with alpha bgA (premultiplied). GDI doesn't write the alpha
+// channel; we derive it from pixel coverage.
 func applyAlpha(px []byte, textA, bgA, gray int) {
 	for i := 0; i < len(px); i += 4 {
 		b, g, r := int(px[i]), int(px[i+1]), int(px[i+2])
@@ -604,8 +614,82 @@ func applyAlpha(px []byte, textA, bgA, gray int) {
 	}
 }
 
-// render pinta las líneas en el DIB y lo presenta con UpdateLayeredWindow
-// (mueve, redimensiona y pinta en una sola llamada, alpha por píxel).
+// dynamicGray: gray for Dynamic text based on the background's average
+// luminance. dark remembers whether the background is considered dark; the
+// 108-148 dead band avoids flicker on contrast edges.
+func dynamicGray(lum int, dark *bool) int {
+	switch {
+	case lum > 148:
+		*dark = false // light background → dark text
+	case lum < 108:
+		*dark = true // dark background → light text
+	}
+	if *dark {
+		return 255 // White
+	}
+	return 74 // Grey-black
+}
+
+// ensureSample creates, once, the small DIB used to sample the background.
+func (ov *overlay) ensureSample() {
+	if ov.smpDC == 0 {
+		ov.smpDC, _, _ = procCreateCompatDC.Call(0)
+	}
+	if ov.smpBmp != 0 {
+		return
+	}
+	bi := bitmapInfo{Header: bitmapInfoHeader{
+		BiSize: 40, BiWidth: smpW, BiHeight: -smpH, BiPlanes: 1, BiBitCount: 32,
+	}}
+	var bits unsafe.Pointer
+	bmp, _, _ := procCreateDIBSection.Call(ov.smpDC, uintptr(unsafe.Pointer(&bi)), dibRGBColor,
+		uintptr(unsafe.Pointer(&bits)), 0, 0)
+	ov.smpBmp, ov.smpBits = bmp, bits
+	if bmp != 0 {
+		procSelectObject.Call(ov.smpDC, bmp)
+	}
+}
+
+// avgLuma: average Rec.601 luma of a BGRA buffer (the 114 on blue matters:
+// without it, blue-heavy backgrounds read as near-black).
+func avgLuma(px []byte) int {
+	lum, n := 0, 0
+	for i := 0; i+3 < len(px); i += 4 {
+		lum += (int(px[i+2])*299 + int(px[i+1])*587 + int(px[i])*114) / 1000
+		n++
+	}
+	if n == 0 {
+		return 0
+	}
+	return lum / n
+}
+
+// sampleGray samples the screen region under the overlay and returns the
+// Dynamic gray. Falls back to 255 (light text) if capture is unavailable.
+func (ov *overlay) sampleGray(x, y, w, h int32) int {
+	ov.ensureSample()
+	hdc, _, _ := procGetDC.Call(0)
+	if hdc == 0 {
+		return 255
+	}
+	defer procReleaseDC.Call(0, hdc)
+	if ov.smpBmp == 0 {
+		return 255
+	}
+	// ponytail: the capture includes the overlay itself (layered window); its
+	// black fill dims the sample by exactly (100-bg)%, so we undo that below;
+	// text pixels are sparse and hysteresis absorbs them — no masking tricks.
+	procStretchBlt.Call(ov.smpDC, 0, 0, smpW, smpH, hdc,
+		uintptr(x), uintptr(y), uintptr(w), uintptr(h), srcCopy)
+	avg := avgLuma(unsafe.Slice((*byte)(ov.smpBits), smpW*smpH*4))
+	if bg := ov.cfg.BgOpacity; bg < 90 {
+		avg = avg * 100 / (100 - bg) // undo the fill's dimming; >=90 is an opaque box: dark, white text is fine
+	}
+	return dynamicGray(avg, &ov.dynDark)
+}
+
+// render paints the lines on the DIB and presents it with UpdateLayeredWindow
+// (moves, resizes and paints in a single call, per-pixel alpha).
 func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	ov.ensureSurface(w, h)
 	if ov.memBmp == 0 {
@@ -645,7 +729,11 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	procSelectObject.Call(ov.memDC, old)
 
 	px := unsafe.Slice((*byte)(ov.bits), int(w)*int(h)*4)
-	applyAlpha(px, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, colorGray[ov.cfg.TextColor])
+	gray := colorGray[ov.cfg.TextColor]
+	if ov.cfg.TextColor == "Dynamic" {
+		gray = ov.sampleGray(x, y, w, h)
+	}
+	applyAlpha(px, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, gray)
 
 	blend := blendFunction{BlendOp: 1 /*AC_SRC_OVER*/, SourceConstantAlph: 255, AlphaFormat: acSrcAlpha}
 	ptDst := sizeStruct{Cx: x, Cy: y}
@@ -665,7 +753,7 @@ func (ov *overlay) addTray() {
 		UCallbackMessage: trayMsg,
 	}
 	nid.CbSize = uint32(unsafe.Sizeof(nid))
-	// icono embebido en el exe (rsrc.syso, ID 1); fallback stock si falta (go run)
+	// icon embedded in the exe (rsrc.syso, ID 1); stock fallback if missing (go run)
 	icon := loadAppIcon()
 	nid.HIcon = icon
 	copy(nid.SzTip[:], syscall.StringToUTF16("Open Perf HUD"))
@@ -674,7 +762,7 @@ func (ov *overlay) addTray() {
 
 var cornerNames = [4]string{"Top-left", "Top-right", "Bottom-left", "Bottom-right"}
 
-// loadAppIcon carga el icono del exe (recurso ID 1, embebido via rsrc.syso).
+// loadAppIcon loads the exe's icon (resource ID 1, embedded via rsrc.syso).
 func loadAppIcon() uintptr {
 	if hmod, _, _ := procGetModuleHandleW.Call(0); hmod != 0 {
 		if icon, _, _ := procLoadIconW.Call(hmod, 1); icon != 0 {
@@ -685,7 +773,7 @@ func loadAppIcon() uintptr {
 	return icon
 }
 
-// appendOptions añade un submenú con una opción marcada.
+// appendOptions adds a submenu with one checked option.
 func appendOptions(menu uintptr, label string, opts []string, cur string, base int) {
 	sub, _, _ := procCreatePopupMenu.Call()
 	for i, o := range opts {
@@ -700,16 +788,16 @@ func appendOptions(menu uintptr, label string, opts []string, cur string, base i
 	procAppendMenuW.Call(menu, mfPopup, sub, uintptr(unsafe.Pointer(t)))
 }
 
-// menuOpt: submenú excluyente de la bandeja. Esta tabla alimenta buildMenu
-// (opciones y marca según cur()) y handleMenu (set(i) aplica el índice
-// elegido); init() asigna bases de id sin solape a partir de 2000.
+// menuOpt: exclusive-choice tray submenu. This table feeds buildMenu
+// (options and check mark from cur()) and handleMenu (set(i) applies the
+// chosen index); init() assigns non-overlapping id bases starting at 2000.
 type menuOpt struct {
 	label string
 	opts  []string
 	cur   func(*overlay) string
 	set   func(*overlay, int)
 	base  int
-	sep   bool // separador antes de esta entrada
+	sep   bool // separator before this entry
 }
 
 var menuOpts = []menuOpt{
@@ -748,10 +836,10 @@ func (ov *overlay) buildMenu() uintptr {
 	}
 	sep := func() { procAppendMenuW.Call(menu, mfSeparator, 0, 0) }
 
-	add("Open Perf HUD v"+version, mfGrayed, 0) // título, no clicable
+	add("Open Perf HUD v"+version, mfGrayed, 0) // title, not clickable
 	sep()
 
-	// Metrics: conmutadores bool, sección propia arriba del todo
+	// Metrics: bool toggles, own section at the top
 	sub, _, _ := procCreatePopupMenu.Call()
 	ptrs := ov.cfg.metricPtrs()
 	for i, label := range metricLabels {
@@ -773,7 +861,7 @@ func (ov *overlay) buildMenu() uintptr {
 	add(toggleTxt, 0, menuToggle)
 	for _, m := range menuOpts {
 		if m.sep {
-			sep() // — ajustes finos —
+			sep() // — fine tuning —
 		}
 		appendOptions(menu, m.label, m.opts, m.cur(ov), m.base)
 	}
@@ -782,11 +870,11 @@ func (ov *overlay) buildMenu() uintptr {
 	return menu
 }
 
-// trackMenu muestra el menú en el cursor y devuelve el comando elegido (0 = cerrar).
+// trackMenu shows the menu at the cursor and returns the chosen command (0 = dismissed).
 func (ov *overlay) trackMenu(menu uintptr) uintptr {
 	var pt struct{ X, Y int32 }
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-	procSetForegroundWindow.Call(ov.hwnd) // truco para que el menú se cierre al clicar fuera
+	procSetForegroundWindow.Call(ov.hwnd) // trick so the menu closes when clicking outside
 	cmd, _, _ := procTrackPopupMenu.Call(
 		menu, tpmRightButton|tpmReturnCmd|tpmNonotify,
 		uintptr(pt.X), uintptr(pt.Y), 0, ov.hwnd, 0)
@@ -794,7 +882,7 @@ func (ov *overlay) trackMenu(menu uintptr) uintptr {
 	return cmd
 }
 
-// showMenu reabre el menú tras cada selección: varios cambios sin re-clicar la bandeja.
+// showMenu reopens the menu after each selection: several changes without re-clicking the tray.
 func (ov *overlay) showMenu() {
 	for {
 		menu := ov.buildMenu()
@@ -803,7 +891,7 @@ func (ov *overlay) showMenu() {
 		}
 		cmd := ov.trackMenu(menu)
 		procDestroyMenu.Call(menu)
-		if cmd == 0 { // Esc o clic fuera
+		if cmd == 0 { // Esc or click outside
 			return
 		}
 		ov.handleMenu(cmd)
@@ -834,7 +922,7 @@ func (ov *overlay) handleMenu(cmd uintptr) {
 	}
 }
 
-// cfgChanged aplica el cambio de config: guarda, reposiciona (y repinta vía ULW).
+// cfgChanged applies the config change: saves, repositions (and repaints via ULW).
 func (ov *overlay) cfgChanged() {
 	SaveConfig(ov.cfg)
 	ov.position()
@@ -867,13 +955,13 @@ func parseHotkey(s string) (mods, vk uint32, err error) {
 			mods |= modWin
 		default:
 			if i != len(parts)-1 {
-				return 0, 0, fmt.Errorf("modificador desconocido: %q", p)
+				return 0, 0, fmt.Errorf("unknown modifier: %q", p)
 			}
 			r := []rune(strings.TrimSpace(p))
 			if len(r) != 1 || !unicode.IsLetter(r[0]) && !unicode.IsDigit(r[0]) {
 				return 0, 0, fmt.Errorf("invalid key: %q", p)
 			}
-			vk = uint32(r[0]) // letras/dígitos: VK == ASCII
+			vk = uint32(r[0]) // letters/digits: VK == ASCII
 		}
 	}
 	return mods, vk, nil
