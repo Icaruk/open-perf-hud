@@ -1,14 +1,17 @@
-# <img src="icon.svg" width="48" alt="logo"> Open Perf HUD  
+<p align="center"><img src="icon.svg" width="100" alt="logo"></p>
+<h1 align="center">Open Perf HUD  </h1>
 
 [![Release](https://img.shields.io/github/v/release/Icaruk/open-perf-hud?label=release&sort=semver)](https://github.com/Icaruk/open-perf-hud/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)](https://github.com/Icaruk/open-perf-hud)
 [![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8)](https://go.dev)
 
-FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games. One `.exe`, nothing else to install.
+FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games.  
+One `.exe`, nothing else to install.  
+### <a href="https://github.com/Icaruk/open-perf-hud/releases/download/v1.0.0/open-perf-hud.exe">Download</a>
+
 
 <img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
 
-## [⬇ Download latest release](https://github.com/Icaruk/open-perf-hud/releases/download/v1.0.0/open-perf-hud.exe)
 
 ## Why this one
 
