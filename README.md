@@ -1,10 +1,22 @@
 # <img src="icon.svg" width="28" align="top" alt=""> Open Perf HUD
 
+[![Release](https://img.shields.io/github/v/release/Icaruk/open-perf-hud?label=release&sort=semver)](https://github.com/Icaruk/open-perf-hud/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)](https://github.com/Icaruk/open-perf-hud)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8)](https://go.dev)
+
 FPS, CPU, GPU, VRAM and RAM in a small always-on-top overlay for your games. One `.exe`, nothing else to install.
 
 <img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
 
 ## [⬇ Download latest release](https://github.com/Icaruk/open-perf-hud/releases/download/v1.0.0/open-perf-hud.exe)
+
+## Why this one
+
+- **One `.exe`, nothing else.** No installer, no background service, no runtime to keep updated. Delete the file and it's gone.
+- **No injection, no hooks.** It listens to the frame events Windows already emits (the same source as Intel's PresentMon). Nothing is written into the game's memory — anti-cheat has nothing to flag.
+- **Light.** Plain Win32 + GDI, no browser engine, no .NET, no cgo.
+- **Configurable from the tray.** Position, size, colors and metrics in a click; one `config.json` next to the exe.
+- **Scriptable.** `--cli` prints the same numbers to the console; `--probe` diagnoses FPS issues.
 
 ## Requirements
 
@@ -94,6 +106,23 @@ Command line (for scripting and bug reports):
 | `open-perf-hud.exe` | The overlay. |
 | `open-perf-hud.exe --cli` | Same metrics, printed to the console, no overlay and no admin prompt. |
 | `open-perf-hud.exe --probe 10s` | Diagnostic histogram of the frame-rate events received. Useful when FPS shows `—`. |
+
+## FAQ
+
+**Is it safe with anti-cheat?**
+Yes — it never injects code or reads the game's memory. It only listens to the frame events Windows itself broadcasts (see [Why this one](#why-this-one)).
+
+**Why does it ask for administrator permission?**
+Only the FPS counter needs it. Say no and everything except FPS keeps working.
+
+**Why does my game need borderless windowed?**
+In exclusive fullscreen no app can draw over the game — that's a Windows rule, not a limitation of this tool. Borderless windowed looks identical and allows overlays.
+
+**FPS shows `—`?**
+Expected on the desktop and in browsers (they don't count as the focused app). If it happens in a Vulkan/OpenGL game on Windows 11, run `open-perf-hud.exe --probe 10s` with the game focused — see [limitations](#known-limitations).
+
+**Where is the CPU temperature?**
+Windows doesn't expose it without a kernel driver, and this tool refuses to install one on purpose.
 
 ## Known limitations
 
