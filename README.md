@@ -1,3 +1,4 @@
+
 <p align="center"><img src="icon.svg" width="100" alt="logo"></p>
 <h1 align="center">Open Perf HUD  </h1>
 
@@ -11,6 +12,7 @@ One `.exe`, nothing else to install.
 
 
 <img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />
+<img width="558" height="40" alt="image" src="https://github.com/user-attachments/assets/98e62578-cf46-42c5-8c70-2a5fdc0059f1" />
 
 
 ## Why this one
