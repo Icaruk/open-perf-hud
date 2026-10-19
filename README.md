@@ -11,7 +11,7 @@ One `.exe`, nothing else to install.
 ### <a href="https://github.com/Icaruk/open-perf-hud/releases/download/v1.0.0/open-perf-hud.exe">Download</a>
 
 
-<img width="459" height="36" alt="overlay" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />  
+<img width="459" height="36" alt="image" src="https://github.com/user-attachments/assets/1c7c13ef-c46a-44ab-bdf7-a6f55c4887eb" />  
 <img width="450" height="27" alt="image" src="https://github.com/user-attachments/assets/97c63c15-82b5-44be-8581-f06532786249" />  
 <img width="558" height="40" alt="image" src="https://github.com/user-attachments/assets/98e62578-cf46-42c5-8c70-2a5fdc0059f1" />  
 
