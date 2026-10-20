@@ -48,10 +48,12 @@ const (
 	mbIconQuestion = 0x0020
 	idRetry        = 4
 
-	ulwAlpha    = 0x2
-	acSrcAlpha  = 0x1
-	dibRGBColor = 0x0
-	srcCopy     = 0x00CC0020
+	ulwAlpha     = 0x2
+	acSrcAlpha   = 0x1
+	dibRGBColor  = 0x0
+	srcCopy      = 0x00CC0020
+	coloroncolor = 0x3 // STRETCH_DELETESCANS: shrink without the default
+	// BLACKONWHITE AND of eliminated pixels, which darkens mixed colors/text
 
 	smpW, smpH = 64, 8 // size of the Dynamic sampling DIB
 
@@ -110,6 +112,7 @@ var (
 	procCreateCompatDC      = modgee32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection    = modgee32.NewProc("CreateDIBSection")
 	procStretchBlt          = modgee32.NewProc("StretchBlt")
+	procSetStretchBltMode   = modgee32.NewProc("SetStretchBltMode")
 	procUpdateLayeredWnd    = moduser32.NewProc("UpdateLayeredWindow")
 	procShellNotifyIconW    = modshell32.NewProc("Shell_NotifyIconW")
 	procLoadIconW           = moduser32.NewProc("LoadIconW")
@@ -647,6 +650,10 @@ func (ov *overlay) ensureSample() {
 	ov.smpBmp, ov.smpBits = bmp, bits
 	if bmp != 0 {
 		procSelectObject.Call(ov.smpDC, bmp)
+		// default BLACKONWHITE ANDs eliminated scanlines together, biasing
+		// mixed-color and text-covered regions dark and breaking the switch
+		// to dark text on light backgrounds
+		procSetStretchBltMode.Call(ov.smpDC, coloroncolor)
 	}
 }
 
