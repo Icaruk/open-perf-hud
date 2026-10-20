@@ -20,9 +20,13 @@ One `.exe`, nothing else to install.
 
 - **One `.exe`, nothing else:** no installer, no background service (it only runs while exe is open), no runtime to keep updated. Delete the file and it's gone.
 - **No injection, no hooks:** it listens to the frame events Windows already emits (the same source as Intel's PresentMon). Nothing is written into the game's memory so anti-cheat has nothing to flag.
-- **Light:** single <4 MB executable, no dependencies.
 - **Configurable from the tray:** position, size, colors and metrics in a click. File `config.json` sits next to the exe.
 - **Scriptable:** `--cli` prints the same numbers to the console. `--probe` diagnoses FPS issues.
+- **Light:** single <4 MB executable, no dependencies.
+- Low resource usage:
+  
+  <img width="830" height="101" alt="image" src="https://github.com/user-attachments/assets/38567099-9b27-4575-adf1-9b028477b983" />
+
 
 ## Requirements
 
