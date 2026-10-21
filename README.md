@@ -49,6 +49,8 @@ One `.exe`, nothing else to install.
 
 Everything is in the Settings window (tray icon → **Settings…**), and saved to `config.json` next to the exe:
 
+<img width="250" alt="image" src="https://github.com/user-attachments/assets/bbeafae8-cb80-4d94-945d-99218d52ac53" />
+
 | Setting | What it changes |
 |---|---|
 | Metrics | which values are shown (name, FPS, CPU, GPU, GPU temp, VRAM %, VRAM GB, RAM %, RAM GB) |
