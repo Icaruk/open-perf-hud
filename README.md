@@ -23,10 +23,7 @@ One `.exe`, nothing else to install.
 - **Configurable from the tray:** position, size, colors and metrics in a click. File `config.json` sits next to the exe.
 - **Scriptable:** `--cli` prints the same numbers to the console. `--probe` diagnoses FPS issues.
 - **Light:** single <4 MB executable, no dependencies.
-- Low resource usage:
-  
-  <img width="830" height="101" alt="image" src="https://github.com/user-attachments/assets/38567099-9b27-4575-adf1-9b028477b983" />
-
+- **Low resource usage**: 30-65 MB RAM and <0.5% CPU
 
 ## Requirements
 
