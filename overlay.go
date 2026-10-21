@@ -368,16 +368,28 @@ func (ov *overlay) wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr)
 }
 
 // seg: trozo de línea; los títulos de métrica (CPU, GPU…) van en negrita.
+// alert marca el valor que supera su umbral y se pinta en rojo de alerta.
 type seg struct {
-	s    string
-	bold bool
+	s     string
+	bold  bool
+	alert bool
 }
+
+// ---- umbrales de alerta (pinta el valor en rojo) ----
+
+const (
+	alertCPUPct   = 99.0 // % de CPU que dispara la alerta
+	alertGPUPct   = 99.0 // % de GPU que dispara la alerta (n/d no alerta)
+	alertRAMLoad  = 95   // % de RAM en uso que dispara la alerta
+	alertVRAMFrac = 0.95 // fracción de VRAM usada sobre el total
+)
 
 func (ov *overlay) lines() [][]seg {
 	s := ov.snap
 	m := ov.cfg.Metrics
 	type item struct {
 		title, val string
+		alert      bool
 	}
 	var its []item
 
@@ -388,10 +400,11 @@ func (ov *overlay) lines() [][]seg {
 		its = append(its, item{title: "FPS", val: s.FPSTxt()})
 	}
 	if m.CPUPct {
-		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU)})
+		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: s.CPU >= alertCPUPct})
 	}
 	if m.GPUPct {
-		its = append(its, item{title: "GPU", val: s.GPUTxt()})
+		// GPU -1 = n/d: nunca alerta
+		its = append(its, item{title: "GPU", val: s.GPUTxt(), alert: s.GPU >= alertGPUPct})
 	}
 	if m.GPUTemp {
 		its = append(its, item{title: "GPU", val: s.TempTxt()})
@@ -408,7 +421,9 @@ func (ov *overlay) lines() [][]seg {
 		if m.VRAMGB {
 			parts = append(parts, s.VRAMTxt())
 		}
-		its = append(its, item{title: "VRAM", val: strings.Join(parts, " ")})
+		// épsilon: 7.6/8 GB da 94.999…% en float y debe contar como 95%
+		alert := s.VRAMUsed >= 0 && s.VRAMTotal > 0 && s.VRAMUsed/s.VRAMTotal >= alertVRAMFrac-1e-9
+		its = append(its, item{title: "VRAM", val: strings.Join(parts, " "), alert: alert})
 	}
 	if m.RAMPct || m.RAMGB {
 		var parts []string
@@ -418,7 +433,7 @@ func (ov *overlay) lines() [][]seg {
 		if m.RAMGB {
 			parts = append(parts, s.RAMTxt())
 		}
-		its = append(its, item{title: "RAM", val: strings.Join(parts, " ")})
+		its = append(its, item{title: "RAM", val: strings.Join(parts, " "), alert: s.RAMLoad >= alertRAMLoad})
 	}
 
 	// Agrupación: ítems consecutivos del mismo prefijo (CPU, GPU…) no repiten la
@@ -434,9 +449,9 @@ func (ov *overlay) lines() [][]seg {
 	}
 	segOf := func(it item) []seg {
 		if it.title == "" {
-			return []seg{{s: it.val}}
+			return []seg{{s: it.val, alert: it.alert}}
 		}
-		return []seg{{s: it.title, bold: true}, {s: " " + it.val}}
+		return []seg{{s: it.title, bold: true}, {s: " " + it.val, alert: it.alert}}
 	}
 	if ov.cfg.Orientation == "horizontal" {
 		// px → espacios (~½ carácter): none pegado del todo, xs ajustado, xl amplio
@@ -589,18 +604,48 @@ func (ov *overlay) ensureSurface(w, h int32) {
 	procSelectObject.Call(ov.memDC, bmp)
 }
 
-// applyAlpha: texto con alpha textA y gris gray (255=blanco puro), fondo
-// negro con alpha bgA (premultiplicado). GDI no escribe el canal alpha; lo
-// derivamos de la cobertura del píxel.
-func applyAlpha(px []byte, textA, bgA, gray int) {
-	for i := 0; i < len(px); i += 4 {
-		b, g, r := int(px[i]), int(px[i+1]), int(px[i+2])
-		m := max(r, max(g, b))
-		a1 := m * textA / 255
-		px[i] = uint8(b * textA / 255 * gray / 255)
-		px[i+1] = uint8(g * textA / 255 * gray / 255)
-		px[i+2] = uint8(r * textA / 255 * gray / 255)
-		px[i+3] = uint8(a1 + bgA*(255-a1)/255)
+// alertSpan: región [x0,x1)×[y0,y1) del DIB que se pinta en rojo de alerta.
+type alertSpan struct{ x0, x1, y0, y1 int32 }
+
+// alertRed: rojo de alerta con luminancia Rec.709 igualada a la del gris del
+// texto (mismo contraste sobre el fondo). Con el matiz (255,x,x):
+// L = 0.2126·255 + (0.7152+0.0722)·x ⇒ x = (L−54.2)/0.7874. Por encima de
+// gris ~172 la igualdad exacta exigiría desaturar hacia rosa/blanco; el
+// clamp a 150 conserva el matiz rojo (queda algo más oscuro que los textos
+// más claros, nunca ilegible).
+func alertRed(gray int) (r, g, b int) {
+	x := int((float64(gray) - 54.2) / 0.7874)
+	if x < 0 {
+		x = 0
+	} else if x > 150 {
+		x = 150
+	}
+	return 255, x, x
+}
+
+// applyAlpha: texto blanco con alpha textA, teñido del gris del tema; dentro
+// de los spans de alerta, del rojo de alerta. Fondo negro con alpha bgA
+// (premultiplicado). GDI no escribe el canal alpha; lo derivamos de la
+// cobertura del píxel.
+func applyAlpha(px []byte, w, h int32, textA, bgA, gray int, spans []alertSpan) {
+	_, gr, gb := alertRed(gray)
+	for y := int32(0); y < h; y++ {
+		for x := int32(0); x < w; x++ {
+			i := (int(y)*int(w) + int(x)) * 4
+			r, g, b := gray, gray, gray
+			for _, sp := range spans {
+				if x >= sp.x0 && x < sp.x1 && y >= sp.y0 && y < sp.y1 {
+					r, g, b = 255, gr, gb
+					break
+				}
+			}
+			m := max(int(px[i]), max(int(px[i+1]), int(px[i+2])))
+			a1 := m * textA / 255
+			px[i] = uint8(int(px[i]) * textA / 255 * r / 255)
+			px[i+1] = uint8(int(px[i+1]) * textA / 255 * g / 255)
+			px[i+2] = uint8(int(px[i+2]) * textA / 255 * b / 255)
+			px[i+3] = uint8(a1 + bgA*(255-a1)/255)
+		}
 	}
 }
 
@@ -626,6 +671,7 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	step := ov.step()
 	var cy int32
 	var sz sizeStruct
+	var spans []alertSpan
 	for _, l := range lines {
 		var cx int32
 		for _, g := range l {
@@ -638,6 +684,12 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 			procTextOutW.Call(ov.memDC, uintptr(im+cx), uintptr(im+cy),
 				uintptr(unsafe.Pointer(&w16[0])), uintptr(len(w16)-1))
 			procGetTextExtentPoint.Call(ov.memDC, uintptr(unsafe.Pointer(&w16[0])), uintptr(len(w16)-1), uintptr(unsafe.Pointer(&sz)))
+			if g.alert {
+				spans = append(spans, alertSpan{
+					x0: im + cx, x1: im + cx + sz.Cx + 1, // +1: sangrado de antialias
+					y0: im + cy, y1: im + cy + step,
+				})
+			}
 			cx += sz.Cx
 		}
 		cy += step
@@ -645,7 +697,7 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	procSelectObject.Call(ov.memDC, old)
 
 	px := unsafe.Slice((*byte)(ov.bits), int(w)*int(h)*4)
-	applyAlpha(px, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, colorGray[ov.cfg.TextColor])
+	applyAlpha(px, w, h, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, colorGray[ov.cfg.TextColor], spans)
 
 	blend := blendFunction{BlendOp: 1 /*AC_SRC_OVER*/, SourceConstantAlph: 255, AlphaFormat: acSrcAlpha}
 	ptDst := sizeStruct{Cx: x, Cy: y}
