@@ -57,13 +57,15 @@ Everything is in the Settings window (tray icon → **Settings…**), and saved 
 | Metrics | which values are shown (name, FPS, CPU, GPU, GPU temp, VRAM %, VRAM GB, RAM %, RAM GB) |
 | Position | which corner of the screen |
 | Text size | `xs` · `sm` · `md` · `lg` |
-| Text color | `Dynamic` (light or dark text to fit whatever is behind; values over their threshold turn red) + 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
+| Text color | `Dynamic` (light or dark text to fit whatever is behind) + 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
 | Background | opacity of the black box behind the text, 0–100 % in steps of 5 (off with `Dynamic`) |
 | Layout | one metric per line, or all on one line |
 | Margin | distance from the screen edge |
 | Inner margin | padding inside the box |
 | Item spacing | gap between items, `none` packs them tight |
 | Offset left / right / top / bottom | extra pixels from each edge, 0–9999 |
+
+A value over its threshold (CPU/GPU 99 %, RAM/VRAM 95 %) turns red in any text color — the red is tinted to keep good contrast with the chosen color (and with the sampled background under `Dynamic`).
 
 Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU 10%`), and the labels are bold.
 
@@ -98,7 +100,7 @@ Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU
 - `corner`: 0 top-left · 1 top-right · 2 bottom-left · 3 bottom-right.
 - `opacity`: 0–255 (text).
 - `bgOpacity`: 0–100 in steps of 5 (% of the black background; 0 = text only; forced to 0 with `Dynamic`).
-- `textColor`: `Dynamic|White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — `Dynamic` samples the screen behind the overlay each refresh and picks White (255) on dark backgrounds or Grey-black (74) on light ones, and turns a value red when it crosses its threshold (CPU/GPU 99 %, RAM/VRAM 95 %); the rest is a fixed grayscale (255/224/198/171/158/138/110/74/0), where `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a).
+- `textColor`: `Dynamic|White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — `Dynamic` samples the screen behind the overlay each refresh and picks White (255) on dark backgrounds or Grey-black (74) on light ones; the rest is a fixed grayscale (255/224/198/171/158/138/110/74/0), where `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a). Values over their threshold (CPU/GPU 99 %, RAM/VRAM 95 %) turn red in any color, tinted for contrast.
 - `innerMargin`: `none|xs|sm|md|lg` (inner padding).
 - `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between items; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
 - `fontSize`: `xs|sm|md|lg` (12/15/18/24 px).

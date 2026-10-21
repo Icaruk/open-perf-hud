@@ -7,7 +7,7 @@ Native GUI settings window (programmatic Win32 controls, zero dependencies) repl
 - [x] config.go — Background: 0..100 selector in steps of 5, snap in LoadConfig
 - [x] config.go — Offsets: string → int (0-9999) with JSON migration from the old format
 - [x] config.go — TextColor "Dynamic": validation, forces BgOpacity=0, base gray White-grey 2
-- [x] overlay.go — alert red active only with Dynamic (gating in lines() + textGray())
+- [x] overlay.go — alert red in every text color, tinted per gray by alertRed() + textGray()
 - [x] settings.go — Win32 dialog: own window, combos, checks, offset EDITs, Close, live preview
 - [x] overlay.go — tray reduced to Settings… / Show-Hide overlay / Exit; remove submenu machinery
 - [x] pure-logic tests + verification GOOS=windows build, vet, gofmt
@@ -33,7 +33,8 @@ Native GUI settings window (programmatic Win32 controls, zero dependencies) repl
 
 ### 4. overlay.go — alert-red gating
 
-- Today red fires always (commit 6523ce5). With this plan: in `lines()`, `alert` is only set if `cfg.TextColor == "Dynamic"`; picking a concrete gray = pure text, no red.
+- ~~Today red fires always (commit 6523ce5). With this plan: in `lines()`, `alert` is only set if `cfg.TextColor == "Dynamic"`; picking a concrete gray = pure text, no red.~~
+- **Final decision (user)**: red fires with EVERY text color; `alertRed(gray)` tints it per gray for contrast (pure red at the dark end, clamped at the light end; with `Dynamic` it adapts to the sampled gray).
 - `render`/`applyAlpha` use `cfg.textGray()` as the base gray.
 
 ### 5. settings.go — Win32 dialog (new, ~300-350 lines)

@@ -401,8 +401,6 @@ const (
 func (ov *overlay) lines() [][]seg {
 	s := ov.snap
 	m := ov.cfg.Metrics
-	// Alert red is part of Dynamic: a concrete gray = plain text, no red.
-	dyn := ov.cfg.TextColor == "Dynamic"
 	type item struct {
 		title, val string
 		alert      bool
@@ -416,11 +414,11 @@ func (ov *overlay) lines() [][]seg {
 		its = append(its, item{title: "FPS", val: s.FPSTxt()})
 	}
 	if m.CPUPct {
-		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: dyn && s.CPU >= alertCPUPct})
+		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: s.CPU >= alertCPUPct})
 	}
 	if m.GPUPct {
 		// GPU -1 = n/a: never alerts
-		its = append(its, item{title: "GPU", val: s.GPUTxt(), alert: dyn && s.GPU >= alertGPUPct})
+		its = append(its, item{title: "GPU", val: s.GPUTxt(), alert: s.GPU >= alertGPUPct})
 	}
 	if m.GPUTemp {
 		its = append(its, item{title: "GPU", val: s.TempTxt()})
@@ -438,7 +436,7 @@ func (ov *overlay) lines() [][]seg {
 			parts = append(parts, s.VRAMTxt())
 		}
 		// epsilon: 7.6/8 GB is 94.999…% in float and must count as 95%
-		alert := dyn && s.VRAMUsed >= 0 && s.VRAMTotal > 0 && s.VRAMUsed/s.VRAMTotal >= alertVRAMFrac-1e-9
+		alert := s.VRAMUsed >= 0 && s.VRAMTotal > 0 && s.VRAMUsed/s.VRAMTotal >= alertVRAMFrac-1e-9
 		its = append(its, item{title: "VRAM", val: strings.Join(parts, " "), alert: alert})
 	}
 	if m.RAMPct || m.RAMGB {
@@ -449,7 +447,7 @@ func (ov *overlay) lines() [][]seg {
 		if m.RAMGB {
 			parts = append(parts, s.RAMTxt())
 		}
-		its = append(its, item{title: "RAM", val: strings.Join(parts, " "), alert: dyn && s.RAMLoad >= alertRAMLoad})
+		its = append(its, item{title: "RAM", val: strings.Join(parts, " "), alert: s.RAMLoad >= alertRAMLoad})
 	}
 
 	// Grouping: consecutive items with the same prefix (CPU, GPU…) don't repeat
