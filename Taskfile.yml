@@ -44,6 +44,11 @@ tasks:
     cmds:
       - .\oph-cli.exe --probe {{.CLI_ARGS | default "10s"}}
 
+  alerttest:
+    desc: 'Test visual del rojo de alerta (9 colores x 5 fondos). Reporta por nº de fila.'
+    cmds:
+      - pwsh -NoProfile -File scripts/alert-test.ps1
+
   smoke:
     desc: Overlay alive for 6s without dying + CLI printing a metrics line for 4s
     cmds:
