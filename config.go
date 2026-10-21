@@ -21,10 +21,10 @@ type Config struct {
 	TextColor   string  `json:"textColor"`   // text color (colorOpts)
 	InnerMargin string  `json:"innerMargin"` // none|xs|sm|md|lg, inner padding
 	Spacing     string  `json:"spacing"`     // none|xs|sm|md|lg, gap between lines
-	OffLeft     string  `json:"offsetLeft"`  // extra px from the left edge (offOpts)
-	OffRight    string  `json:"offsetRight"` // extra px from the right edge
-	OffTop      string  `json:"offsetTop"`   // extra px from the top edge
-	OffBottom   string  `json:"offsetBottom"`
+	OffLeft     offset  `json:"offsetLeft"`  // extra px from the left edge (0 = none)
+	OffRight    offset  `json:"offsetRight"` // extra px from the right edge
+	OffTop      offset  `json:"offsetTop"`   // extra px from the top edge
+	OffBottom   offset  `json:"offsetBottom"`
 	RefreshMs   uint32  `json:"refreshMs"` // overlay refresh rate
 	Hotkey      string  `json:"hotkey"`    // "CTRL+SHIFT+O"
 }
@@ -77,7 +77,12 @@ func orientationOf(val string) orientation {
 	return orientations[0]
 }
 
-var bgPcts = []int{0, 10, 25, 50, 75, 100}
+var bgPcts = func() (out []int) {
+	for p := range 21 { // 0, 5, 10 … 100 (steps of 5)
+		out = append(out, p*5)
+	}
+	return
+}()
 
 // bgLabels: menu labels for bgPcts.
 var bgLabels = func() (out []string) {
@@ -87,18 +92,54 @@ var bgLabels = func() (out []string) {
 	return out
 }()
 
-// Per-edge offsets: "none" = 0, the rest are the px in their own label.
-var offOpts = []string{"none", "2", "4", "8", "10", "12", "14", "16", "20", "24", "30", "40", "50"}
+// snapBg rounds bg to the nearest multiple of 5 (the dialog steps by 5) and
+// keeps it 0-100; a hand-edited 33 becomes 35.
+func snapBg(bg int) int {
+	bg = (bg + 2) / 5 * 5
+	return min(max(bg, 0), 100)
+}
 
-func offPx(s string) int {
-	n, _ := strconv.Atoi(s)
-	return n
+// offset: per-edge px offset, 0 = none, 0-9999 (clamped in normalize).
+// Unmarshals the current numeric format and the old string one ("none", "16").
+type offset int
+
+func (o *offset) UnmarshalJSON(b []byte) error {
+	var n int
+	if json.Unmarshal(b, &n) == nil {
+		*o = offset(n)
+		return nil
+	}
+	var s string
+	if json.Unmarshal(b, &s) == nil && s != "none" {
+		if n, err := strconv.Atoi(s); err == nil {
+			*o = offset(n)
+			return nil
+		}
+	}
+	*o = 0 // "none", empty or garbage
+	return nil
+}
+
+// clampOffset keeps a hand-edited offset inside 0-9999.
+func clampOffset(o offset) offset {
+	return offset(min(max(int(o), 0), 9999))
 }
 
 // Text grayscale; Grey/Grey-dark 1 are Steam's (9e9e9e/8a8a8a).
-// "Dynamic" has no entry in colorGray: its gray is picked by sampleGray based on the background.
+// "Dynamic" has no entry in colorGray: sampleGray picks its gray per
+// background; textGray() is its base/fallback (White-grey 2).
 var colorOpts = []string{"Dynamic", "White", "White-grey 1", "White-grey 2", "White-grey 3", "Grey", "Grey-dark 1", "Grey-dark 2", "Grey-black", "Black"}
 var colorGray = map[string]int{"White": 255, "White-grey 1": 224, "White-grey 2": 198, "White-grey 3": 171, "Grey": 158, "Grey-dark 1": 138, "Grey-dark 2": 110, "Grey-black": 74, "Black": 0}
+
+// textGray: base gray for normal text. Dynamic has no fixed gray —
+// White-grey 2 is its base (sampleGray refines it per background, and it is
+// the fallback when the screen can't be captured).
+func (c *Config) textGray() int {
+	if c.TextColor == "Dynamic" {
+		return colorGray["White-grey 2"]
+	}
+	return colorGray[c.TextColor]
+}
 
 var defaultCfg = Config{Corner: 1, Margin: "none", Opacity: 180, FontSize: "sm", Orientation: "horizontal",
 	RefreshMs: 500, Hotkey: "CTRL+SHIFT+O", BgOpacity: 25, InnerMargin: "none", Spacing: "xs", TextColor: "White-grey 2",
@@ -118,32 +159,36 @@ func LoadConfig() Config {
 	if err == nil {
 		_ = json.Unmarshal(b, &cfg)
 	}
-	if cfg.RefreshMs < 100 {
-		cfg.RefreshMs = defaultCfg.RefreshMs
-	}
-	// out-of-range corner would panic when opening the menu (cornerNames[Corner])
-	if cfg.Corner < 0 || cfg.Corner > 3 {
-		cfg.Corner = defaultCfg.Corner
-	}
-	if cfg.BgOpacity < 0 || cfg.BgOpacity > 100 {
-		cfg.BgOpacity = defaultCfg.BgOpacity
-	}
-	if orientationOf(cfg.Orientation).val != cfg.Orientation {
-		cfg.Orientation = defaultCfg.Orientation
-	}
-	fixStr(&cfg.FontSize, fontPx, defaultCfg.FontSize)
-	fixStr(&cfg.Margin, marginPx, defaultCfg.Margin)
-	fixStr(&cfg.InnerMargin, marginPx, defaultCfg.InnerMargin)
-	fixStr(&cfg.Spacing, spacingPx, defaultCfg.Spacing)
-	if !slices.Contains(colorOpts, cfg.TextColor) {
-		cfg.TextColor = defaultCfg.TextColor
-	}
-	for _, f := range []*string{&cfg.OffLeft, &cfg.OffRight, &cfg.OffTop, &cfg.OffBottom} {
-		if !slices.Contains(offOpts, *f) {
-			*f = "none"
-		}
-	}
+	cfg.normalize()
 	return cfg
+}
+
+// normalize validates/fixes hand-edited fields (pure, so tests can hit it).
+func (c *Config) normalize() {
+	if c.RefreshMs < 100 {
+		c.RefreshMs = defaultCfg.RefreshMs
+	}
+	// out-of-range corner would panic in the settings dialog (cornerNames[Corner])
+	if c.Corner < 0 || c.Corner > 3 {
+		c.Corner = defaultCfg.Corner
+	}
+	c.BgOpacity = snapBg(c.BgOpacity)
+	if orientationOf(c.Orientation).val != c.Orientation {
+		c.Orientation = defaultCfg.Orientation
+	}
+	fixStr(&c.FontSize, fontPx, defaultCfg.FontSize)
+	fixStr(&c.Margin, marginPx, defaultCfg.Margin)
+	fixStr(&c.InnerMargin, marginPx, defaultCfg.InnerMargin)
+	fixStr(&c.Spacing, spacingPx, defaultCfg.Spacing)
+	if !slices.Contains(colorOpts, c.TextColor) {
+		c.TextColor = defaultCfg.TextColor
+	}
+	if c.TextColor == "Dynamic" {
+		c.BgOpacity = 0 // sampleGray needs the real background visible
+	}
+	for _, f := range []*offset{&c.OffLeft, &c.OffRight, &c.OffTop, &c.OffBottom} {
+		*f = clampOffset(*f)
+	}
 }
 
 // fixStr returns the default value if the loaded one is not in the valid table.

@@ -32,12 +32,12 @@ const (
 	wmRButtonUp  = 0x0205
 	wmLButtonUp  = 0x0202
 
-	trayMsg    = wmApp + 1
-	idTimer    = 1
-	idHotkey   = 1
-	menuToggle = 1001
-	menuQuit   = 1003
-	idMetric   = 1500 // + index (metricLabels); the other bases are assigned by init() over menuOpts
+	trayMsg      = wmApp + 1
+	idTimer      = 1
+	idHotkey     = 1
+	menuToggle   = 1001
+	menuSettings = 1002
+	menuQuit     = 1003
 
 	swHide           = 0
 	swShowNoActivate = 4
@@ -72,10 +72,7 @@ const (
 	tpmReturnCmd   = 0x0100
 	tpmNonotify    = 0x0080
 
-	mfChecked   = 0x0008
-	mfPopup     = 0x0010
 	mfSeparator = 0x0800
-	mfGrayed    = 0x0001
 )
 
 var (
@@ -358,7 +355,12 @@ func (ov *overlay) wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr)
 
 	case trayMsg:
 		if lParam == wmRButtonUp || lParam == wmLButtonUp {
-			ov.showMenu()
+			if menu := ov.buildMenu(); menu != 0 {
+				if cmd := ov.trackMenu(menu); cmd != 0 {
+					ov.handleMenu(cmd)
+				}
+				procDestroyMenu.Call(menu)
+			}
 		}
 
 	case wmHotkey:
@@ -399,6 +401,8 @@ const (
 func (ov *overlay) lines() [][]seg {
 	s := ov.snap
 	m := ov.cfg.Metrics
+	// Alert red is part of Dynamic: a concrete gray = plain text, no red.
+	dyn := ov.cfg.TextColor == "Dynamic"
 	type item struct {
 		title, val string
 		alert      bool
@@ -412,11 +416,11 @@ func (ov *overlay) lines() [][]seg {
 		its = append(its, item{title: "FPS", val: s.FPSTxt()})
 	}
 	if m.CPUPct {
-		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: s.CPU >= alertCPUPct})
+		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: dyn && s.CPU >= alertCPUPct})
 	}
 	if m.GPUPct {
 		// GPU -1 = n/a: never alerts
-		its = append(its, item{title: "GPU", val: s.GPUTxt(), alert: s.GPU >= alertGPUPct})
+		its = append(its, item{title: "GPU", val: s.GPUTxt(), alert: dyn && s.GPU >= alertGPUPct})
 	}
 	if m.GPUTemp {
 		its = append(its, item{title: "GPU", val: s.TempTxt()})
@@ -434,7 +438,7 @@ func (ov *overlay) lines() [][]seg {
 			parts = append(parts, s.VRAMTxt())
 		}
 		// epsilon: 7.6/8 GB is 94.999…% in float and must count as 95%
-		alert := s.VRAMUsed >= 0 && s.VRAMTotal > 0 && s.VRAMUsed/s.VRAMTotal >= alertVRAMFrac-1e-9
+		alert := dyn && s.VRAMUsed >= 0 && s.VRAMTotal > 0 && s.VRAMUsed/s.VRAMTotal >= alertVRAMFrac-1e-9
 		its = append(its, item{title: "VRAM", val: strings.Join(parts, " "), alert: alert})
 	}
 	if m.RAMPct || m.RAMGB {
@@ -445,7 +449,7 @@ func (ov *overlay) lines() [][]seg {
 		if m.RAMGB {
 			parts = append(parts, s.RAMTxt())
 		}
-		its = append(its, item{title: "RAM", val: strings.Join(parts, " "), alert: s.RAMLoad >= alertRAMLoad})
+		its = append(its, item{title: "RAM", val: strings.Join(parts, " "), alert: dyn && s.RAMLoad >= alertRAMLoad})
 	}
 
 	// Grouping: consecutive items with the same prefix (CPU, GPU…) don't repeat
@@ -588,8 +592,8 @@ func (ov *overlay) position() {
 	}
 	// Offsets: extra px from each edge (offLeft/offTop push inwards from
 	// left/top; offRight/offBottom from right/bottom).
-	x += int32(offPx(ov.cfg.OffLeft) - offPx(ov.cfg.OffRight))
-	y += int32(offPx(ov.cfg.OffTop) - offPx(ov.cfg.OffBottom))
+	x += int32(ov.cfg.OffLeft - ov.cfg.OffRight)
+	y += int32(ov.cfg.OffTop - ov.cfg.OffBottom)
 
 	// always: margin/corner change x,y without changing the size
 	ov.render(lines, x, y, w, h)
@@ -642,8 +646,8 @@ func alertRed(gray int) (r, g, b int) {
 // pixel coverage.
 func applyAlpha(px []byte, w, h int32, textA, bgA, gray int, spans []alertSpan) {
 	_, gr, gb := alertRed(gray)
-	for y := int32(0); y < h; y++ {
-		for x := int32(0); x < w; x++ {
+	for y := range h {
+		for x := range w {
 			i := (int(y)*int(w) + int(x)) * 4
 			tr, tg, tb := gray, gray, gray
 			for _, sp := range spans {
@@ -718,16 +722,17 @@ func avgLuma(px []byte) int {
 }
 
 // sampleGray samples the screen region under the overlay and returns the
-// Dynamic gray. Falls back to 255 (light text) if capture is unavailable.
+// Dynamic gray. Falls back to the base gray (textGray) if capture is
+// unavailable.
 func (ov *overlay) sampleGray(x, y, w, h int32) int {
 	ov.ensureSample()
 	hdc, _, _ := procGetDC.Call(0)
 	if hdc == 0 {
-		return 255
+		return ov.cfg.textGray()
 	}
 	defer procReleaseDC.Call(0, hdc)
 	if ov.smpBmp == 0 {
-		return 255
+		return ov.cfg.textGray()
 	}
 	// ponytail: the capture includes the overlay itself (layered window); its
 	// black fill dims the sample by exactly (100-bg)%, so we undo that below;
@@ -789,7 +794,7 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	procSelectObject.Call(ov.memDC, old)
 
 	px := unsafe.Slice((*byte)(ov.bits), int(w)*int(h)*4)
-	gray := colorGray[ov.cfg.TextColor]
+	gray := ov.cfg.textGray()
 	if ov.cfg.TextColor == "Dynamic" {
 		gray = ov.sampleGray(x, y, w, h)
 	}
@@ -833,100 +838,24 @@ func loadAppIcon() uintptr {
 	return icon
 }
 
-// appendOptions adds a submenu with one checked option.
-func appendOptions(menu uintptr, label string, opts []string, cur string, base int) {
-	sub, _, _ := procCreatePopupMenu.Call()
-	for i, o := range opts {
-		t, _ := syscall.UTF16PtrFromString(o)
-		var flags uintptr
-		if o == cur {
-			flags = mfChecked
-		}
-		procAppendMenuW.Call(sub, flags, uintptr(base+i), uintptr(unsafe.Pointer(t)))
-	}
-	t, _ := syscall.UTF16PtrFromString(label)
-	procAppendMenuW.Call(menu, mfPopup, sub, uintptr(unsafe.Pointer(t)))
-}
-
-// menuOpt: exclusive-choice tray submenu. This table feeds buildMenu
-// (options and check mark from cur()) and handleMenu (set(i) applies the
-// chosen index); init() assigns non-overlapping id bases starting at 2000.
-type menuOpt struct {
-	label string
-	opts  []string
-	cur   func(*overlay) string
-	set   func(*overlay, int)
-	base  int
-	sep   bool // separator before this entry
-}
-
-var menuOpts = []menuOpt{
-	{"Position", cornerNames[:], func(o *overlay) string { return cornerNames[o.cfg.Corner] }, func(o *overlay, i int) { o.cfg.Corner = i }, 0, false},
-	{"Text size", fontSizes, func(o *overlay) string { return o.cfg.FontSize }, func(o *overlay, i int) { o.cfg.FontSize = fontSizes[i]; o.makeFont() }, 0, false},
-	{"Text color", colorOpts, func(o *overlay) string { return o.cfg.TextColor }, func(o *overlay, i int) { o.cfg.TextColor = colorOpts[i] }, 0, false},
-	{"Background", bgLabels, func(o *overlay) string { return fmt.Sprintf("%d%%", o.cfg.BgOpacity) }, func(o *overlay, i int) { o.cfg.BgOpacity = bgPcts[i] }, 0, false},
-	{"Layout", []string{orientations[0].name, orientations[1].name},
-		func(o *overlay) string { return orientationOf(o.cfg.Orientation).name },
-		func(o *overlay, i int) { o.cfg.Orientation = orientations[i].val }, 0, true},
-	{"Margin", margins, func(o *overlay) string { return o.cfg.Margin }, func(o *overlay, i int) { o.cfg.Margin = margins[i] }, 0, false},
-	{"Inner margin", margins, func(o *overlay) string { return o.cfg.InnerMargin }, func(o *overlay, i int) { o.cfg.InnerMargin = margins[i] }, 0, false},
-	{"Item spacing", spacings, func(o *overlay) string { return o.cfg.Spacing }, func(o *overlay, i int) { o.cfg.Spacing = spacings[i] }, 0, false},
-	{"Offset left", offOpts, func(o *overlay) string { return o.cfg.OffLeft }, func(o *overlay, i int) { o.cfg.OffLeft = offOpts[i] }, 0, false},
-	{"Offset right", offOpts, func(o *overlay) string { return o.cfg.OffRight }, func(o *overlay, i int) { o.cfg.OffRight = offOpts[i] }, 0, false},
-	{"Offset top", offOpts, func(o *overlay) string { return o.cfg.OffTop }, func(o *overlay, i int) { o.cfg.OffTop = offOpts[i] }, 0, false},
-	{"Offset bottom", offOpts, func(o *overlay) string { return o.cfg.OffBottom }, func(o *overlay, i int) { o.cfg.OffBottom = offOpts[i] }, 0, false},
-}
-
-func init() {
-	base := 2000 // > menuToggle/menuQuit/idMetric+len(metricLabels)
-	for i := range menuOpts {
-		menuOpts[i].base = base
-		base += len(menuOpts[i].opts)
-	}
-}
-
+// buildMenu: the tray menu — settings, overlay toggle, exit.
 func (ov *overlay) buildMenu() uintptr {
 	menu, _, _ := procCreatePopupMenu.Call()
 	if menu == 0 {
 		return 0
 	}
-	add := func(text string, flags, id uintptr) {
+	add := func(text string, id uintptr) {
 		t, _ := syscall.UTF16PtrFromString(text)
-		procAppendMenuW.Call(menu, flags, id, uintptr(unsafe.Pointer(t)))
+		procAppendMenuW.Call(menu, 0, id, uintptr(unsafe.Pointer(t)))
 	}
-	sep := func() { procAppendMenuW.Call(menu, mfSeparator, 0, 0) }
-
-	add("Open Perf HUD v"+version, mfGrayed, 0) // title, not clickable
-	sep()
-
-	// Metrics: bool toggles, own section at the top
-	sub, _, _ := procCreatePopupMenu.Call()
-	ptrs := ov.cfg.metricPtrs()
-	for i, label := range metricLabels {
-		t, _ := syscall.UTF16PtrFromString(label)
-		var flags uintptr
-		if *ptrs[i] {
-			flags = mfChecked
-		}
-		procAppendMenuW.Call(sub, flags, uintptr(idMetric+i), uintptr(unsafe.Pointer(t)))
-	}
-	tm, _ := syscall.UTF16PtrFromString("Metrics")
-	procAppendMenuW.Call(menu, mfPopup, sub, uintptr(unsafe.Pointer(tm)))
-	sep()
-
+	add("Settings…", menuSettings)
 	toggleTxt := "Hide overlay"
 	if !ov.visible {
 		toggleTxt = "Show overlay"
 	}
-	add(toggleTxt, 0, menuToggle)
-	for _, m := range menuOpts {
-		if m.sep {
-			sep() // — fine tuning —
-		}
-		appendOptions(menu, m.label, m.opts, m.cur(ov), m.base)
-	}
-	sep()
-	add("Exit", 0, menuQuit)
+	add(toggleTxt, menuToggle)
+	procAppendMenuW.Call(menu, mfSeparator, 0, 0)
+	add("Exit", menuQuit)
 	return menu
 }
 
@@ -942,43 +871,14 @@ func (ov *overlay) trackMenu(menu uintptr) uintptr {
 	return cmd
 }
 
-// showMenu reopens the menu after each selection: several changes without re-clicking the tray.
-func (ov *overlay) showMenu() {
-	for {
-		menu := ov.buildMenu()
-		if menu == 0 {
-			return
-		}
-		cmd := ov.trackMenu(menu)
-		procDestroyMenu.Call(menu)
-		if cmd == 0 { // Esc or click outside
-			return
-		}
-		ov.handleMenu(cmd)
-		if cmd == menuQuit || cmd == menuToggle {
-			return
-		}
-	}
-}
-
 func (ov *overlay) handleMenu(cmd uintptr) {
-	switch {
-	case cmd == menuToggle:
+	switch cmd {
+	case menuSettings:
+		openSettings(ov)
+	case menuToggle:
 		ov.toggle()
-	case cmd == menuQuit:
+	case menuQuit:
 		procDestroyWindow.Call(ov.hwnd)
-	case cmd >= idMetric && cmd < idMetric+uintptr(len(metricLabels)):
-		p := ov.cfg.metricPtrs()[cmd-idMetric]
-		*p = !*p
-		ov.cfgChanged()
-	default:
-		for _, m := range menuOpts {
-			if cmd >= uintptr(m.base) && cmd < uintptr(m.base)+uintptr(len(m.opts)) {
-				m.set(ov, int(cmd)-m.base)
-				ov.cfgChanged()
-				return
-			}
-		}
 	}
 }
 

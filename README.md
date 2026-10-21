@@ -20,7 +20,7 @@ One `.exe`, nothing else to install.
 
 - **One `.exe`, nothing else:** no installer, no background service (it only runs while exe is open), no runtime to keep updated. Delete the file and it's gone.
 - **No injection, no hooks:** it listens to the frame events Windows already emits (the same source as Intel's PresentMon). Nothing is written into the game's memory so anti-cheat has nothing to flag.
-- **Configurable from the tray:** position, size, colors and metrics in a click. File `config.json` sits next to the exe.
+- **Configurable from the tray:** a Settings window with position, size, colors and metrics. File `config.json` sits next to the exe.
 - **Scriptable:** `--cli` prints the same numbers to the console. `--probe` diagnoses FPS issues.
 - **Light:** single <4 MB executable, no dependencies.
 - Low resource usage:
@@ -40,7 +40,7 @@ One `.exe`, nothing else to install.
 
 1. Download `open-perf-hud.exe` and run it. It goes to the system tray and starts drawing the overlay.
 2. Start your game in borderless windowed mode.
-3. Right-click the **tray icon** to move it, resize the text, change colours, or pick which metrics you see.
+3. Right-click the **tray icon** → **Settings…** to move it, resize the text, change colours, or pick which metrics you see.
 
 - The overlay is click-through and always on top: it never takes clicks from the game.
 - It follows the screen of the game window you have focused.
@@ -50,20 +50,20 @@ One `.exe`, nothing else to install.
 
 ## Settings
 
-Everything is in the tray menu, and saved to `config.json` next to the exe:
+Everything is in the Settings window (tray icon → **Settings…**), and saved to `config.json` next to the exe:
 
-| Menu | What it changes |
+| Setting | What it changes |
 |---|---|
 | Metrics | which values are shown (name, FPS, CPU, GPU, GPU temp, VRAM %, VRAM GB, RAM %, RAM GB) |
 | Position | which corner of the screen |
 | Text size | `xs` · `sm` · `md` · `lg` |
-| Text color | `Dynamic` (light or dark text to fit whatever is behind) + 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
-| Background | opacity of the black box behind the text, 0–100 % |
+| Text color | `Dynamic` (light or dark text to fit whatever is behind; values over their threshold turn red) + 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
+| Background | opacity of the black box behind the text, 0–100 % in steps of 5 (off with `Dynamic`) |
 | Layout | one metric per line, or all on one line |
 | Margin | distance from the screen edge |
 | Inner margin | padding inside the box |
 | Item spacing | gap between items, `none` packs them tight |
-| Offset left / right / top / bottom | extra pixels from each edge, 0–50 |
+| Offset left / right / top / bottom | extra pixels from each edge, 0–9999 |
 
 Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU 10%`), and the labels are bold.
 
@@ -82,10 +82,10 @@ Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU
   "textColor": "White-grey 2",
   "innerMargin": "none",
   "spacing": "xs",
-  "offsetLeft": "none",
-  "offsetRight": "none",
-  "offsetTop": "none",
-  "offsetBottom": "none",
+  "offsetLeft": 0,
+  "offsetRight": 0,
+  "offsetTop": 0,
+  "offsetBottom": 0,
   "metrics": {
     "name": false, "fps": true, "cpuPct": true, "gpuPct": true, "gpuTemp": true,
     "vramPct": true, "vramGB": true, "ramPct": true, "ramGB": true
@@ -97,13 +97,13 @@ Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU
 
 - `corner`: 0 top-left · 1 top-right · 2 bottom-left · 3 bottom-right.
 - `opacity`: 0–255 (text).
-- `bgOpacity`: 0–100 (% of the black background; 0 = text only).
-- `textColor`: `Dynamic|White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — `Dynamic` samples the screen behind the overlay each refresh and picks White (255) on dark backgrounds or Grey-black (74) on light ones; the rest is a fixed grayscale (255/224/198/171/158/138/110/74/0), where `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a).
+- `bgOpacity`: 0–100 in steps of 5 (% of the black background; 0 = text only; forced to 0 with `Dynamic`).
+- `textColor`: `Dynamic|White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — `Dynamic` samples the screen behind the overlay each refresh and picks White (255) on dark backgrounds or Grey-black (74) on light ones, and turns a value red when it crosses its threshold (CPU/GPU 99 %, RAM/VRAM 95 %); the rest is a fixed grayscale (255/224/198/171/158/138/110/74/0), where `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a).
 - `innerMargin`: `none|xs|sm|md|lg` (inner padding).
 - `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between items; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
 - `fontSize`: `xs|sm|md|lg` (12/15/18/24 px).
 - `margin`: `none|xs|sm|md|lg` (0/4/8/12/24 px).
-- `offsetLeft|offsetRight|offsetTop|offsetBottom`: `none|2|4|8|10|12|14|16|20|24|30|40|50` px extra from each edge on top of `margin` (they push the overlay inwards from that edge; combinable).
+- `offsetLeft|offsetRight|offsetTop|offsetBottom`: number of px extra (0–9999) from each edge on top of `margin` (they push the overlay inwards from that edge; combinable). Older versions wrote `"none"` or a quoted number — still accepted.
 - `orientation`: `vertical` (one metric per line) or `horizontal` (everything on one line).
 - `metrics`: one boolean per metric; VRAM and RAM merge `%` and GB when both are on (`VRAM 35% 8.8/9.8 GB`).
 - `refreshMs`: how often the overlay updates (500 = twice per second).

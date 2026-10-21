@@ -102,9 +102,11 @@ func alertOf(t *testing.T, lines [][]seg, title string) bool {
 }
 
 // Alert threshold per metric: CPU/GPU >=99, RAM/VRAM >=95% of the total; n/a
-// and values just below the threshold don't alert.
+// and values just below the threshold don't alert. Alerts are a Dynamic
+// feature — the test config must opt in.
 func TestLinesAlert(t *testing.T) {
 	cfg := defaultCfg
+	cfg.TextColor = "Dynamic"
 	cfg.Orientation = "vertical" // one line per metric
 	mk := func(f func(*Snapshot)) Snapshot {
 		s := Snapshot{CPU: 50, GPU: 50, GPUTemp: -1,
@@ -132,6 +134,18 @@ func TestLinesAlert(t *testing.T) {
 		ov := &overlay{cfg: cfg, snap: c.snap}
 		if got := alertOf(t, ov.lines(), c.line); got != c.want {
 			t.Errorf("%s: alert = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A concrete text color = plain text: no alert red without Dynamic.
+func TestLinesNoAlertWithoutDynamic(t *testing.T) {
+	ov := &overlay{cfg: defaultCfg, snap: Snapshot{CPU: 99, GPU: 99, RAMLoad: 99,
+		RAMUsed: 8, RAMTotal: 8, VRAMUsed: 8, VRAMTotal: 8}}
+	ov.cfg.Orientation = "vertical"
+	for _, line := range []string{"CPU", "GPU", "VRAM", "RAM"} {
+		if alertOf(t, ov.lines(), line) {
+			t.Errorf("%s: alert fired with TextColor=%q", line, ov.cfg.TextColor)
 		}
 	}
 }

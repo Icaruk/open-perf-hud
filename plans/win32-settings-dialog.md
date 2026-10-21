@@ -4,13 +4,13 @@ Native GUI settings window (programmatic Win32 controls, zero dependencies) repl
 
 ## Steps
 
-- [ ] config.go — Background: 0..100 selector in steps of 5, snap in LoadConfig
-- [ ] config.go — Offsets: string → int (0-9999) with JSON migration from the old format
-- [ ] config.go — TextColor "Dynamic": validation, forces BgOpacity=0, base gray White-grey 2
-- [ ] overlay.go — alert red active only with Dynamic (gating in lines() + textGray())
-- [ ] settings.go — Win32 dialog: own window, combos, checks, offset EDITs, Close, live preview
-- [ ] overlay.go — tray reduced to Settings… / Show-Hide overlay / Exit; remove submenu machinery
-- [ ] pure-logic tests + verification GOOS=windows build, vet, gofmt
+- [x] config.go — Background: 0..100 selector in steps of 5, snap in LoadConfig
+- [x] config.go — Offsets: string → int (0-9999) with JSON migration from the old format
+- [x] config.go — TextColor "Dynamic": validation, forces BgOpacity=0, base gray White-grey 2
+- [x] overlay.go — alert red active only with Dynamic (gating in lines() + textGray())
+- [x] settings.go — Win32 dialog: own window, combos, checks, offset EDITs, Close, live preview
+- [x] overlay.go — tray reduced to Settings… / Show-Hide overlay / Exit; remove submenu machinery
+- [x] pure-logic tests + verification GOOS=windows build, vet, gofmt
 
 ## Detail
 
