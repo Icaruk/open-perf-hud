@@ -26,7 +26,8 @@ const (
 	wsBorder           = 0x00800000
 	wsVScroll          = 0x00200000
 
-	wmCommand = 0x0111
+	wmCommand        = 0x0111
+	wmCtlcolorstatic = 0x0138
 
 	cbsDropdownlist = 0x0003
 	bsGroupbox      = 0x0007
@@ -46,11 +47,11 @@ const (
 	cbnSelchange = 1
 	bnClicked    = 0
 
-	defaultGuiFont = 17 // GetStockObject
-	colorBtnface   = 15 // class background brush = COLOR_BTNFACE + 1
-	idcArrow       = 32512
-	cwUseDefault   = 0x80000000
-	swShow         = 5
+	whiteBrush   = 0 // GetStockObject
+	colorWindow  = 5 // class background brush = COLOR_WINDOW + 1 (white)
+	idcArrow     = 32512
+	cwUseDefault = 0x80000000
+	swShow       = 5
 
 	idCombo = 100 // + index in comboDefs
 	idOff   = 200 // + 0..3 (offLabels)
@@ -138,12 +139,15 @@ func openSettings(ov *overlay) {
 	className, _ := syscall.UTF16PtrFromString("OpenPerfHudSettings")
 	if !settingsRegistered {
 		cursor, _, _ := procLoadCursorW.Call(0, idcArrow)
+		icon := loadAppIcon() // exe icon (rsrc.syso ID 1), same as the tray
 		wc := wndClassExW{
 			CbSize:        uint32(unsafe.Sizeof(wndClassExW{})),
 			LpfnWndProc:   syscall.NewCallback(settingsWndProc),
 			HInstance:     hInstance(),
 			HCursor:       cursor,
-			HBrBackground: colorBtnface + 1,
+			HIcon:         icon,
+			HIconSm:       icon,
+			HBrBackground: colorWindow + 1, // white, modern flat look
 			LpszClassName: className,
 		}
 		if r1, _, _ := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc))); r1 == 0 {
@@ -151,8 +155,8 @@ func openSettings(ov *overlay) {
 		}
 		settingsRegistered = true
 	}
-	// client 410x586 → total window size via AdjustWindowRect
-	rc := rect{Right: 410, Bottom: 586}
+	// client 420x632 → total window size via AdjustWindowRect
+	rc := rect{Right: 420, Bottom: 632}
 	procAdjustWindowRect.Call(uintptr(unsafe.Pointer(&rc)), wsOverlappedWindow, 0)
 	title, _ := syscall.UTF16PtrFromString("Open Perf HUD — Settings")
 	hwnd, _, _ := procCreateWindowExW.Call(0,
@@ -168,11 +172,22 @@ func openSettings(ov *overlay) {
 		combos: make([]uintptr, len(comboDefs)),
 		edits:  make([]uintptr, len(offLabels)),
 		checks: make([]uintptr, len(metricLabels))}
-	d.font, _, _ = procGetStockObject.Call(defaultGuiFont)
+	d.font = d.makeFont()
 	settingsInst = d
 	d.buildControls()
 	procShowWindow.Call(hwnd, swShow)
 	procSetForegroundWindow.Call(hwnd)
+}
+
+// makeFont: Segoe UI 9pt (negative height = char height, not cell height),
+// ClearType — the modern Windows UI font; DEFAULT_GUI_FONT looks dated.
+func (d *settingsDlg) makeFont() uintptr {
+	face, _ := syscall.UTF16PtrFromString("Segoe UI")
+	h := int32(-12) // 9pt, negative = char height (variable: uintptr(-12) would overflow)
+	f, _, _ := procCreateFontW.Call(
+		uintptr(h), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0,
+		uintptr(unsafe.Pointer(face)))
+	return f
 }
 
 func settingsWndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
@@ -181,7 +196,13 @@ func settingsWndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintp
 		if d := settingsInst; d != nil {
 			d.command(wParam)
 		}
+	case wmCtlcolorstatic: // labels and group boxes: paint their text on white
+		brush, _, _ := procGetStockObject.Call(whiteBrush)
+		return brush
 	case wmDestroy:
+		if d := settingsInst; d != nil {
+			procDeleteObject.Call(d.font)
+		}
 		settingsInst = nil // no PostQuitMessage: the overlay keeps running
 	}
 	ret, _, _ := procDefWindowProcW.Call(hwnd, uintptr(message), wParam, lParam)
@@ -246,47 +267,47 @@ func (d *settingsDlg) syncBg() {
 // buildControls creates the groups, combos, edits, checks and Close button.
 func (d *settingsDlg) buildControls() {
 	group := func(text string, y, h int32) {
-		d.ctl("BUTTON", text, bsGroupbox, 8, y, 394, h, 0)
+		d.ctl("BUTTON", text, bsGroupbox, 8, y, 404, h, 0)
 	}
 
-	group("Layout", 8, 198)
+	group("Layout", 8, 208)
 	for i := range 5 { // Position … Layout
-		d.combo(int32(i), 34+33*int32(i))
+		d.combo(int32(i), 36+36*int32(i))
 	}
-	group("Spacing", 210, 112)
+	group("Spacing", 224, 132)
 	for i := 5; i < len(comboDefs); i++ { // Margin, Inner margin, Item spacing
-		d.combo(int32(i), 236+33*int32(i-5))
+		d.combo(int32(i), 252+36*int32(i-5))
 	}
 	d.syncBg()
 
-	group("Offsets (px)", 326, 64)
+	group("Offsets (px)", 364, 68)
 	ptrs := offPtrs(&d.ov.cfg)
 	for i := range offLabels {
-		x := int32(18 + i*92)
-		d.ctl("STATIC", offLabels[i], 0, x, 355, 48, 20, 0)
-		d.edits[i] = d.ctl("EDIT", "", wsBorder|wsTabStop|esNumber, x+48, 352, 40, 24, int32(idOff+i))
+		x := int32(18 + i*94)
+		d.ctl("STATIC", offLabels[i], 0, x, 396, 48, 20, 0)
+		d.edits[i] = d.ctl("EDIT", "", wsBorder|wsTabStop|esNumber, x+48, 392, 44, 26, int32(idOff+i))
 		setWinText(d.edits[i], strconv.Itoa(int(*ptrs[i])))
 	}
 
-	group("Metrics", 394, 140)
+	group("Metrics", 440, 144)
 	mptrs := d.ov.cfg.metricPtrs()
 	for i, label := range metricLabels {
-		x := int32(20 + (i/5)*190)
-		y := int32(420 + (i%5)*22)
-		d.checks[i] = d.ctl("BUTTON", label, bsAutocheckbox|wsTabStop, x, y, 180, 22, int32(idCheck+i))
+		x := int32(20 + (i/5)*192)
+		y := int32(466 + (i%5)*23)
+		d.checks[i] = d.ctl("BUTTON", label, bsAutocheckbox|wsTabStop, x, y, 184, 22, int32(idCheck+i))
 		if *mptrs[i] {
 			procSendMessageW.Call(d.checks[i], bmSetcheck, bstChecked, 0)
 		}
 	}
 
-	d.ctl("BUTTON", "Close", bsPushbutton|wsTabStop, 155, 546, 100, 30, idClose)
+	d.ctl("BUTTON", "Close", bsPushbutton|wsTabStop, 160, 594, 100, 30, idClose)
 }
 
 // combo creates the i-th combo row at y: label, options, current selection.
 func (d *settingsDlg) combo(i, y int32) {
 	def := &comboDefs[i]
 	d.ctl("STATIC", def.label, 0, 20, y+4, 96, 20, 0)
-	cb := d.ctl("COMBOBOX", "", cbsDropdownlist|wsTabStop|wsVScroll, 122, y, 268, 400, int32(idCombo+i))
+	cb := d.ctl("COMBOBOX", "", cbsDropdownlist|wsTabStop|wsVScroll, 124, y, 272, 400, int32(idCombo+i))
 	d.combos[i] = cb
 	for _, o := range def.opts {
 		t, _ := syscall.UTF16PtrFromString(o)

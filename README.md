@@ -142,7 +142,7 @@ Windows doesn't expose it without a kernel driver, and this tool refuses to inst
 
 ## Development
 
-Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (runs `go fix` first, then both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task modernize` (`go fix`, standalone), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
+Requires Go 1.26+ and [Task](https://taskfile.dev). `task build` (runs `go fix` first, then both exes), `task check` (gofmt/vet/test), `task smoke` (overlay for 6s + CLI for 4s), `task modernize` (`go fix`, standalone), `task run`, `task cli`, `task probe -- 10s`, `task clean`, `task icon` (regenerates icon.ico + rsrc.syso — the exe icon and the themed-controls manifest — from the icon.svg design; requires `go install github.com/akavel/rsrc@latest`).
 
 Platform: Win32 + ETW + PDH + DXGI + NVML, all through `syscall`/`golang.org/x/sys/windows` — no cgo, no third-party packages in the binary.
 
