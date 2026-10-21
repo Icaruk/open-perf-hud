@@ -60,7 +60,7 @@ tasks:
       - pwsh -NoProfile -Command "Remove-Item open-perf-hud.exe, oph-cli.exe -ErrorAction SilentlyContinue"
 
   icon:
-    desc: Regenerate icon.ico, and rsrc.syso (icon + common-controls v6 manifest; requires go install github.com/akavel/rsrc@latest)
+    desc: Regenerate icon.ico, and rsrc.syso (icon + common-controls v6 manifest; requires go install github.com/tc-hib/go-winres@latest)
     cmds:
       - pwsh -NoProfile -File scripts/gen-icon.ps1
-      - "$HOME/go/bin/rsrc.exe -manifest app.manifest -ico icon.ico -arch amd64 -o rsrc.syso"
+      - "$HOME/go/bin/go-winres.exe make --in winres.json --arch amd64 --out rsrc.syso --no-suffix"
