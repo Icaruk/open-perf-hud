@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -343,6 +345,97 @@ func procName(pid uint32) string {
 	return strings.TrimSuffix(name, ".exe")
 }
 
+// ---- Graphics API of a process (module-based refinement) ----
+
+var (
+	procCreateToolhelp32Snapshot = modkernel32.NewProc("CreateToolhelp32Snapshot")
+	procModule32FirstW           = modkernel32.NewProc("Module32FirstW")
+	procModule32NextW            = modkernel32.NewProc("Module32NextW")
+)
+
+const th32csSnapModule = 0x8
+
+type moduleEntry32W struct {
+	Size, ModuleID, ProcessID      uint32
+	GlblcntUsage, ProccntUsage     uint32
+	ModBaseAddr, ModBaseSize, HMod uintptr
+	SzModule                       [256]uint16
+	SzExePath                      [260]uint16
+}
+
+// hasModules reports whether pid has any of the named DLLs loaded
+// (case-insensitive).
+func hasModules(pid uint32, names ...string) bool {
+	h, _, _ := procCreateToolhelp32Snapshot.Call(th32csSnapModule, uintptr(pid))
+	if h == uintptr(^uintptr(0)) { // INVALID_HANDLE_VALUE
+		return false
+	}
+	defer windows.CloseHandle(windows.Handle(h))
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[strings.ToLower(n)] = true
+	}
+	var me moduleEntry32W
+	me.Size = uint32(unsafe.Sizeof(me))
+	for r, _, _ := procModule32FirstW.Call(h, uintptr(unsafe.Pointer(&me))); r != 0; {
+		if want[strings.ToLower(windows.UTF16ToString(me.SzModule[:]))] {
+			return true
+		}
+		r, _, _ = procModule32NextW.Call(h, uintptr(unsafe.Pointer(&me)))
+	}
+	return false
+}
+
+// apiCache: module check per PID every 10s (modules barely change; the DLL
+// walk is a snapshot + ~200 iterations, no need to do it at refresh rate).
+var (
+	apiMu    sync.Mutex
+	apiCache = map[uint32]apiCached{}
+)
+
+type apiCached struct {
+	cls     provClass
+	label   string
+	expires time.Time
+}
+
+// apiLabel resolves the graphics API of pid from the tracker's provider
+// class, refined with the process's loaded DLLs (DXGI can't tell DX11 from
+// DX12 — PresentMon-style module sniffing does).
+func apiLabel(pid uint32, cls provClass) string {
+	apiMu.Lock()
+	c, ok := apiCache[pid]
+	apiMu.Unlock()
+	if ok && c.cls == cls && time.Now().Before(c.expires) {
+		return c.label
+	}
+	label := "—"
+	switch cls {
+	case clsD3D9:
+		label = "DX9"
+	case clsDXGI:
+		switch {
+		case hasModules(pid, "d3d12.dll"):
+			label = "DX12"
+		case hasModules(pid, "d3d10.dll"):
+			label = "DX10"
+		default:
+			label = "DX11"
+		}
+	case clsKernel:
+		switch {
+		case hasModules(pid, "vulkan-1.dll"):
+			label = "Vulkan"
+		case hasModules(pid, "opengl32.dll"):
+			label = "OpenGL"
+		}
+	}
+	apiMu.Lock()
+	apiCache[pid] = apiCached{cls: cls, label: label, expires: time.Now().Add(10 * time.Second)}
+	apiMu.Unlock()
+	return label
+}
+
 // ---- GPU temp (NVML, NVIDIA's own driver lib; no admin needed) ----
 
 var (
@@ -388,6 +481,7 @@ func GPUTempC() float64 {
 type Snapshot struct {
 	ProcName  string
 	FPS       int
+	API       string // graphics API of the focused process ("—" unknown)
 	CPU       float64
 	GPU       float64 // -1 = unavailable
 	GPUTemp   float64 // °C, -1 = unavailable
@@ -400,11 +494,12 @@ type Snapshot struct {
 
 func collectSnapshot(tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter) Snapshot {
 	var fps int
-	name := ""
+	name, api := "", "—"
 	if tracker != nil {
 		if pid, pname := ForegroundProcess(); pid != 0 && pname != "" {
 			fps = tracker.FPS(pid)
 			name = pname
+			api = apiLabel(pid, tracker.Class(pid))
 		}
 	}
 	ramLoad, ramUsed, ramTotal := ramStats()
@@ -412,6 +507,7 @@ func collectSnapshot(tracker *FPSTracker, cpu *CPUMeter, gpu *GPUMeter) Snapshot
 	return Snapshot{
 		ProcName: name,
 		FPS:      fps,
+		API:      api,
 		CPU:      cpu.Percent(),
 		GPU:      gpuPct,
 		RAMLoad:  ramLoad, RAMUsed: ramUsed, RAMTotal: ramTotal,
@@ -442,6 +538,13 @@ func (s Snapshot) FPSTxt() string {
 		return "  —"
 	}
 	return fmt.Sprintf("%3d", s.FPS)
+}
+
+func (s Snapshot) APITxt() string {
+	if s.ProcName == "" {
+		return "—"
+	}
+	return s.API
 }
 
 func (s Snapshot) GPUTxt() string  { return fmtND(s.GPU >= 0, "%.0f%%", s.GPU) }

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const version = "1.3.2"
+const version = "1.4.0"
 
 func usage() {
 	fmt.Print(`Open Perf HUD ` + version + ` — FPS/CPU/GPU/RAM overlay
@@ -119,8 +119,8 @@ func runCLI() {
 	defer tick.Stop()
 	printLine := func() {
 		s := collectSnapshot(tracker, cpu, gpu)
-		fmt.Printf("\r%-24s FPS %s  CPU %5.1f%%  GPU %5s %s  VRAM %11s  RAM %2d%% %s",
-			s.NameTxt(), s.FPSTxt(), s.CPU, s.GPUTxt(), s.TempTxt(), s.VRAMTxt(), s.RAMLoad, s.RAMTxt())
+		fmt.Printf("\r%-24s FPS %s  API %-7s CPU %5.1f%%  GPU %5s %s  VRAM %11s  RAM %2d%% %s",
+			s.NameTxt(), s.FPSTxt(), s.APITxt(), s.CPU, s.GPUTxt(), s.TempTxt(), s.VRAMTxt(), s.RAMLoad, s.RAMTxt())
 	}
 	for range tick.C {
 		printLine()

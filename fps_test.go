@@ -10,6 +10,7 @@ func newTracker() *FPSTracker {
 		events: map[uint32][]time.Time{},
 		lastR:  map[uint32]time.Time{},
 		lastK:  map[uint32]time.Time{},
+		cls:    map[uint32]provClass{},
 	}
 }
 
@@ -22,7 +23,7 @@ func TestFPSTrackerBurst(t *testing.T) {
 	now := time.Now()
 	// 100 presents every 10ms, ALL delivered at once (what the consumer does).
 	for i := 99; i >= 0; i-- {
-		tr.add(42, now.Add(-time.Duration(i)*10*time.Millisecond), false)
+		tr.add(42, now.Add(-time.Duration(i)*10*time.Millisecond), clsDXGI)
 	}
 	if fps := tr.FPS(42); fps != 100 {
 		t.Fatalf("FPS = %d, want 100 (the burst was deduplicated by consumption time)", fps)
@@ -35,8 +36,8 @@ func TestFPSTrackerBurst(t *testing.T) {
 func TestFPSTrackerRuntimeFramesCloseTogether(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(7, base, false)
-	tr.add(7, base.Add(1*time.Millisecond), false)
+	tr.add(7, base, clsDXGI)
+	tr.add(7, base.Add(1*time.Millisecond), clsDXGI)
 	if fps := tr.FPS(7); fps != 2 {
 		t.Fatalf("FPS = %d, want 2 (real runtime frames wrongly deduplicated)", fps)
 	}
@@ -46,9 +47,9 @@ func TestFPSTrackerRuntimeFramesCloseTogether(t *testing.T) {
 func TestFPSTrackerDedupPair(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(7, base, false)
-	tr.add(7, base.Add(1*time.Millisecond), true) // kernel mirror: same present
-	tr.add(7, base.Add(5*time.Millisecond), false)
+	tr.add(7, base, clsDXGI)
+	tr.add(7, base.Add(1*time.Millisecond), clsKernel) // kernel mirror: same present
+	tr.add(7, base.Add(5*time.Millisecond), clsDXGI)
 	if fps := tr.FPS(7); fps != 2 {
 		t.Fatalf("FPS = %d, want 2 (mirror pair not deduplicated)", fps)
 	}
@@ -61,9 +62,9 @@ func TestFPSTrackerDedupPair(t *testing.T) {
 func TestFPSTrackerNoChainCollapse(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(7, base, false)                          // real frame
-	tr.add(7, base.Add(500*time.Microsecond), true) // its kernel mirror (dropped)
-	tr.add(7, base.Add(2*time.Millisecond), false)  // real frame, 1.5ms after the mirror
+	tr.add(7, base, clsDXGI)                             // real frame
+	tr.add(7, base.Add(500*time.Microsecond), clsKernel) // its kernel mirror (dropped)
+	tr.add(7, base.Add(2*time.Millisecond), clsDXGI)     // real frame, 1.5ms after the mirror
 	if fps := tr.FPS(7); fps != 2 {
 		t.Fatalf("FPS = %d, want 2 (chain collapse: dropped mirror swallowed the next real frame)", fps)
 	}
@@ -74,8 +75,8 @@ func TestFPSTrackerNoChainCollapse(t *testing.T) {
 func TestFPSTrackerKernelOnlyPair(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(9, base, true)
-	tr.add(9, base.Add(1*time.Millisecond), true)
+	tr.add(9, base, clsKernel)
+	tr.add(9, base.Add(1*time.Millisecond), clsKernel)
 	if fps := tr.FPS(9); fps != 1 {
 		t.Fatalf("FPS = %d, want 1 (kernel-only pair should dedup)", fps)
 	}
@@ -87,7 +88,7 @@ func TestFPSTrackerKernelFallback(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
 	for i := range 3 {
-		tr.add(9, base.Add(time.Duration(i)*16*time.Millisecond), true)
+		tr.add(9, base.Add(time.Duration(i)*16*time.Millisecond), clsKernel)
 	}
 	if fps := tr.FPS(9); fps != 3 {
 		t.Fatalf("FPS = %d, want 3 (kernel fallback channel not counting)", fps)
@@ -100,11 +101,11 @@ func TestFPSTrackerKernelFallback(t *testing.T) {
 func TestFPSTrackerKernelNoiseNeverEatsRuntime(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(7, base, false)                         // real frame
-	tr.add(7, base.Add(1*time.Millisecond), true)  // mirror
-	tr.add(7, base.Add(8*time.Millisecond), true)  // DWM noise
-	tr.add(7, base.Add(15*time.Millisecond), true) // noise, 1ms before the next real frame
-	tr.add(7, base.Add(16*time.Millisecond), false)
+	tr.add(7, base, clsDXGI)                            // real frame
+	tr.add(7, base.Add(1*time.Millisecond), clsKernel)  // mirror
+	tr.add(7, base.Add(8*time.Millisecond), clsKernel)  // DWM noise
+	tr.add(7, base.Add(15*time.Millisecond), clsKernel) // noise, 1ms before the next real frame
+	tr.add(7, base.Add(16*time.Millisecond), clsDXGI)
 	if fps := tr.FPS(7); fps != 2 {
 		t.Fatalf("FPS = %d, want 2 (kernel noise ate or added frames)", fps)
 	}
@@ -117,9 +118,28 @@ func TestFPSTrackerKernelNoiseNeverEatsRuntime(t *testing.T) {
 func TestFPSTrackerModeSwitch(t *testing.T) {
 	tr := newTracker()
 	base := time.Now()
-	tr.add(7, base, false)
-	tr.add(7, base.Add(2*runtimeGate), true) // runtime silent: kernel adopted
+	tr.add(7, base, clsDXGI)
+	tr.add(7, base.Add(2*runtimeGate), clsKernel) // runtime silent: kernel adopted
 	if fps := tr.FPS(7); fps != 1 {
 		t.Fatalf("FPS = %d, want 1 (kernel fallback not adopted after runtime silence)", fps)
+	}
+}
+
+// Provider class for the API metric: D3D9 beats DXGI beats kernel (max kept),
+// whatever order the events arrive in.
+func TestFPSTrackerClass(t *testing.T) {
+	tr := newTracker()
+	base := time.Now()
+	tr.add(5, base, clsKernel)
+	tr.add(5, base.Add(16*time.Millisecond), clsDXGI)
+	if tr.Class(5) != clsDXGI {
+		t.Fatalf("Class = %d, want clsDXGI", tr.Class(5))
+	}
+	tr.add(5, base.Add(32*time.Millisecond), clsD3D9)
+	if tr.Class(5) != clsD3D9 {
+		t.Fatalf("Class = %d, want clsD3D9", tr.Class(5))
+	}
+	if tr.Class(1234) != clsNone {
+		t.Fatalf("Class of unknown pid = %d, want clsNone", tr.Class(1234))
 	}
 }

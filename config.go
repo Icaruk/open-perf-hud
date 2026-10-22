@@ -33,6 +33,7 @@ type Config struct {
 type Metrics struct {
 	Name    bool `json:"name"` // name of the focused executable
 	FPS     bool `json:"fps"`
+	API     bool `json:"api"` // graphics API of the focused game (DX9/DX11/…)
 	CPUPct  bool `json:"cpuPct"`
 	GPUPct  bool `json:"gpuPct"`
 	GPUTemp bool `json:"gpuTemp"` // °C via NVML (NVIDIA)
@@ -42,11 +43,11 @@ type Metrics struct {
 	RAMGB   bool `json:"ramGB"`
 }
 
-var metricLabels = []string{"Executable name", "FPS", "CPU %", "GPU %", "GPU temp", "VRAM %", "VRAM GB", "RAM %", "RAM GB"}
+var metricLabels = []string{"Executable name", "FPS", "Graphics API", "CPU %", "GPU %", "GPU temp", "VRAM %", "VRAM GB", "RAM %", "RAM GB"}
 
 // metricPtrs aligns the toggles with metricLabels (fixed order).
-func (c *Config) metricPtrs() [9]*bool {
-	return [9]*bool{&c.Metrics.Name, &c.Metrics.FPS, &c.Metrics.CPUPct, &c.Metrics.GPUPct,
+func (c *Config) metricPtrs() [10]*bool {
+	return [10]*bool{&c.Metrics.Name, &c.Metrics.FPS, &c.Metrics.API, &c.Metrics.CPUPct, &c.Metrics.GPUPct,
 		&c.Metrics.GPUTemp, &c.Metrics.VRAMPct, &c.Metrics.VRAMGB, &c.Metrics.RAMPct, &c.Metrics.RAMGB}
 }
 

@@ -42,6 +42,27 @@ var dxgKrnlGUID = func() (g etw.GUID) {
 	return *p
 }()
 
+// d3d9GUID parsed once for the consumer hot path (D3D9-event test).
+var d3d9GUID = func() (g etw.GUID) {
+	p, err := etw.ParseGUID(provD3D9)
+	if err != nil {
+		panic(err) // constant string, can only fail if typoed at compile time
+	}
+	return *p
+}()
+
+// provClass: which provider a PID's present events came from; used both for
+// the fallback gate (runtime vs kernel) and for the "Graphics API" metric.
+// Higher = more specific (kept when both are seen).
+type provClass uint8
+
+const (
+	clsNone   provClass = iota
+	clsKernel           // DxgKrnl only: Vulkan/OpenGL present path
+	clsDXGI             // DXGI: Direct3D 10/11/12
+	clsD3D9             // Direct3D 9
+)
+
 // runtimeGate: while a PID's runtime (DXGI/D3D9) stream is live, its DxgKrnl
 // events are mirrors of the same presents (plus DWM composition noise) and are
 // ignored. If runtime goes silent this long — a presentation-mode switch, or
@@ -55,9 +76,10 @@ type FPSTracker struct {
 	events map[uint32][]time.Time
 	lastR  map[uint32]time.Time // last runtime (DXGI/D3D9) present
 	lastK  map[uint32]time.Time // last kernel (DxgKrnl) present
+	cls    map[uint32]provClass // highest provider class seen for the PID
 }
 
-// add records a Present event; kernel=true for DxgKrnl events.
+// add records a Present event; cls says which provider it came from.
 //
 // Never pair the two streams by time: unrelated kernel events (composition/
 // flip activity in the game's context) can land just before a real runtime
@@ -70,9 +92,13 @@ type FPSTracker struct {
 //
 // ponytail: kernel-only games (Vulkan/OpenGL) still dedup <2ms kernel pairs —
 // ceiling ~500 FPS, same as before.
-func (t *FPSTracker) add(pid uint32, ts time.Time, kernel bool) {
+func (t *FPSTracker) add(pid uint32, ts time.Time, cls provClass) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if cls > t.cls[pid] {
+		t.cls[pid] = cls
+	}
+	kernel := cls == clsKernel
 	if kernel {
 		if ts.Sub(t.lastR[pid]) < runtimeGate {
 			return // runtime stream alive: mirror or DWM noise, ignore
@@ -97,6 +123,7 @@ func (t *FPSTracker) add(pid uint32, ts time.Time, kernel bool) {
 				delete(t.events, p)
 				delete(t.lastR, p)
 				delete(t.lastK, p)
+				delete(t.cls, p)
 			}
 		}
 	}
@@ -117,6 +144,13 @@ func (t *FPSTracker) FPS(pid uint32) int {
 		t.events[pid] = ev
 	}
 	return len(ev)
+}
+
+// Class returns the highest provider class seen for pid (clsNone if never).
+func (t *FPSTracker) Class(pid uint32) provClass {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cls[pid]
 }
 
 func presentProvider(guidStr string, kw uint64, ids ...uint16) (etw.Provider, error) {
@@ -168,7 +202,12 @@ func providers(filtered bool) ([]etw.Provider, error) {
 // StartFPS creates the ETW session (admin required) and a background consumer.
 // Returns the tracker and a cleanup func.
 func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
-	tracker := &FPSTracker{events: make(map[uint32][]time.Time), lastR: make(map[uint32]time.Time), lastK: make(map[uint32]time.Time)}
+	tracker := &FPSTracker{
+		events: make(map[uint32][]time.Time),
+		lastR:  make(map[uint32]time.Time),
+		lastK:  make(map[uint32]time.Time),
+		cls:    make(map[uint32]provClass),
+	}
 
 	provs, err := providers(true)
 	if err != nil {
@@ -189,7 +228,14 @@ func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
 	c := etw.NewConsumer(ctx)
 	c.FromSessions(s)
 	c.EventRecordCallback = func(er *etw.EventRecord) bool {
-		tracker.add(er.EventHeader.ProcessId, er.Timestamp(), er.EventHeader.ProviderId == dxgKrnlGUID)
+		switch er.EventHeader.ProviderId {
+		case dxgKrnlGUID:
+			tracker.add(er.EventHeader.ProcessId, er.Timestamp(), clsKernel)
+		case d3d9GUID:
+			tracker.add(er.EventHeader.ProcessId, er.Timestamp(), clsD3D9)
+		default:
+			tracker.add(er.EventHeader.ProcessId, er.Timestamp(), clsDXGI)
+		}
 		return false
 	}
 	if err := c.Start(); err != nil {

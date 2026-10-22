@@ -413,6 +413,9 @@ func (ov *overlay) lines() [][]seg {
 	if m.FPS {
 		its = append(its, item{title: "FPS", val: s.FPSTxt()})
 	}
+	if m.API {
+		its = append(its, item{title: "API", val: s.APITxt()})
+	}
 	if m.CPUPct {
 		its = append(its, item{title: "CPU", val: fmt.Sprintf("%.0f%%", s.CPU), alert: s.CPU >= alertCPUPct})
 	}
