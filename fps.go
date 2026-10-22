@@ -33,25 +33,49 @@ const (
 	dxgPresentHistDet   = 0xD7 // PresentHistoryDetailed_Start, Win11
 )
 
+// dxgKrnlGUID parsed once for the consumer hot path (kernel-event test).
+var dxgKrnlGUID = func() (g etw.GUID) {
+	p, err := etw.ParseGUID(provDxgKrnl)
+	if err != nil {
+		panic(err) // constant string, can only fail if typoed at compile time
+	}
+	return *p
+}()
+
 // FPSTracker counts Present events per PID in a 1s sliding window.
 type FPSTracker struct {
 	mu     sync.Mutex
 	events map[uint32][]time.Time
-	last   map[uint32]time.Time
+	lastR  map[uint32]time.Time // last runtime (DXGI/D3D9) present
+	lastK  map[uint32]time.Time // last kernel (DxgKrnl) present
 }
 
-func (t *FPSTracker) add(pid uint32, ts time.Time) {
+// add records a Present event; kernel=true for DxgKrnl events. A windowed
+// present emits a runtime event AND a kernel one (PresentHistory) ≤2ms apart:
+// only that mirror pair is deduplicated, on the EVENT timestamp (the consumer
+// delivers in bursts; with time.Now() a whole burst collapsed to 1).
+//
+// Runtime events always count unless they mirror a kernel one, and a dropped
+// kernel mirror updates no slot: after a hitch the engine catches up with real
+// frames <2ms apart and those MUST count (a symmetric dedup collapsed the
+// burst in chain and read 40 instead of 60, or 8 after a stutter).
+// ponytail: kernel-only games (Vulkan/OpenGL) still dedup <2ms pairs against
+// lastK — ceiling ~500 FPS, same as before.
+func (t *FPSTracker) add(pid uint32, ts time.Time, kernel bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// A windowed present emits a runtime event (DXGI/D3D9) AND a kernel one
-	// (PresentHistory): symmetric 2ms dedup on the EVENT timestamp. The consumer
-	// delivers in buffer bursts; with time.Now() (consumption time) a whole burst
-	// collapsed to 1 and FPS was always 1. Ceiling ~500 FPS.
-	if la, ok := t.last[pid]; ok && ts.Sub(la) < 2*time.Millisecond {
-		t.last[pid] = ts
-		return
+	if kernel {
+		if ts.Sub(t.lastR[pid]) < 2*time.Millisecond || ts.Sub(t.lastK[pid]) < 2*time.Millisecond {
+			return // mirror or kernel-only burst: drop, touch nothing
+		}
+		t.lastK[pid] = ts
+	} else {
+		if ts.Sub(t.lastK[pid]) < 2*time.Millisecond {
+			t.lastR[pid] = ts // runtime half of a mirror pair
+			return
+		}
+		t.lastR[pid] = ts
 	}
-	t.last[pid] = ts
 	ev := append(t.events[pid], ts)
 	cut := 0
 	for cut < len(ev) && ts.Sub(ev[cut]) > time.Second {
@@ -63,7 +87,8 @@ func (t *FPSTracker) add(pid uint32, ts time.Time) {
 		for p, evs := range t.events {
 			if len(evs) == 0 || ts.Sub(evs[len(evs)-1]) > 30*time.Second {
 				delete(t.events, p)
-				delete(t.last, p)
+				delete(t.lastR, p)
+				delete(t.lastK, p)
 			}
 		}
 	}
@@ -135,13 +160,18 @@ func providers(filtered bool) ([]etw.Provider, error) {
 // StartFPS creates the ETW session (admin required) and a background consumer.
 // Returns the tracker and a cleanup func.
 func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
-	tracker := &FPSTracker{events: make(map[uint32][]time.Time), last: make(map[uint32]time.Time)}
+	tracker := &FPSTracker{events: make(map[uint32][]time.Time), lastR: make(map[uint32]time.Time), lastK: make(map[uint32]time.Time)}
 
 	provs, err := providers(true)
 	if err != nil {
 		return nil, nil, err
 	}
 	s := etw.NewRealTimeSession("OpenPerfHudFPS")
+	// Default buffers lose events when a game presents in bursts; 32/64 removes
+	// that loss class (LostEvents is printed by --probe).
+	props := s.TraceProperties()
+	props.MinimumBuffers = 32
+	props.MaximumBuffers = 64
 	for _, p := range provs {
 		if err := s.EnableProvider(p); err != nil {
 			return nil, nil, fmt.Errorf("ETW enable %s: %w", p.Name, err)
@@ -151,7 +181,7 @@ func StartFPS(ctx context.Context) (*FPSTracker, func(), error) {
 	c := etw.NewConsumer(ctx)
 	c.FromSessions(s)
 	c.EventRecordCallback = func(er *etw.EventRecord) bool {
-		tracker.add(er.EventHeader.ProcessId, er.Timestamp())
+		tracker.add(er.EventHeader.ProcessId, er.Timestamp(), er.EventHeader.ProviderId == dxgKrnlGUID)
 		return false
 	}
 	if err := c.Start(); err != nil {
@@ -222,6 +252,15 @@ func runProbe(d time.Duration) {
 
 	mu.Lock()
 	defer mu.Unlock()
+	// Diagnostics: lost events point at buffer loss (fix: more buffers); the
+	// 0x2B rate ≈ real FPS with the game in focus, to compare against the HUD.
+	lost, buf := c.LostEvents.Load(), uint64(0)
+	if tr, ok := c.GetTrace(s.TraceName()); ok {
+		buf = tr.RTLostBuffer.Load()
+	}
+	fmt.Printf("\nLost events: %d (lost buffers: %d)\n", lost, buf)
+	fmt.Printf("DXGI Present_Stop (0x2B): %.1f/s (≈FPS if the game is in focus)\n",
+		float64(hist["DXGI"][dxgiPresentStop])/d.Seconds())
 	if len(hist) == 0 {
 		fmt.Println("0 events. Did you run as admin? Is anything presenting frames?")
 		return

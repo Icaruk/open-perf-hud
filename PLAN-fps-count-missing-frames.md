@@ -22,16 +22,16 @@ No se puede medir desde macOS (ETW no existe ahí): los cambios se compilan cruz
 
 ## Cambios
 
-- [ ] **1. Dedup por clase de proveedor** (`fps.go`)
+- [x] **1. Dedup por clase de proveedor** (`fps.go`)
   - `add(pid, ts, kernel bool)`; el callback pasa `er.EventHeader.ProviderId == GUID DxgKrnl` (GUID parseado una vez en `StartFPS`).
   - Por PID, dos slots: `lastR` (runtime) y `lastK` (kernel), en lugar del `last` único.
   - **Runtime** (DXGI/D3D9): cuenta siempre; solo se descarta si llega ≤2ms tras un evento kernel (espejo del mismo present). Al contar o descartarse, `lastR = ts`.
   - **Kernel** (DxgKrnl): se descarta si llega ≤2ms tras `lastR` o `lastK`; al descartarse **no** actualiza ningún slot (esto mata el colapso en cadena). Si cuenta, `lastK = ts`.
   - `ponytail:` los juegos kernel-only (Vulkan/OpenGL) con frames <2ms siguen colapsando — techo documentado, igual que hoy.
   - Ventana de 1s, pruning y cleanup: sin cambios.
-- [ ] **2. Buffers de sesión** (`fps.go`, `StartFPS`): tras `NewRealTimeSession`, `props := s.TraceProperties()` → `props.MinimumBuffers = 32; props.MaximumBuffers = 64`. Elimina la clase de pérdida por buffer lleno.
-- [ ] **3. `--probe` diagnóstico** (`fps.go`, `runProbe`): al final imprimir `c.LostEvents.Load()` (y RTLostBuffer si está expuesto) y la tasa/segundo del 0x2B (eventos/segundos de probe ≈ FPS real si el juego está en foco). Así el reportero pinza el culpable sin más código.
-- [ ] **4. Tests de regresión** (`fps_test.go`):
+- [x] **2. Buffers de sesión** (`fps.go`, `StartFPS`): tras `NewRealTimeSession`, `props := s.TraceProperties()` → `props.MinimumBuffers = 32; props.MaximumBuffers = 64`. Elimina la clase de pérdida por buffer lleno.
+- [x] **3. `--probe` diagnóstico** (`fps.go`, `runProbe`): al final imprimir `c.LostEvents.Load()` (y RTLostBuffer si está expuesto) y la tasa/segundo del 0x2B (eventos/segundos de probe ≈ FPS real si el juego está en foco). Así el reportero pinza el culpable sin más código.
+- [x] **4. Tests de regresión** (`fps_test.go`):
   - Dos frames runtime a 1ms entre sí → cuentan ambos (hoy fallaría: el 2º se deduplica).
   - Par runtime+kernel ≤2ms → 1 (regresión del dedup del par).
   - Cadena runtime → kernel espejo → runtime real 1,5ms después → 2 (no colapso en cadena).
@@ -40,7 +40,10 @@ No se puede medir desde macOS (ETW no existe ahí): los cambios se compilan cruz
 ## Verificación
 
 - [ ] macOS: `GOOS=windows GOARCH=amd64 go vet ./... && GOOS=windows GOARCH=amd64 go test -c -o /dev/null .`
-- [ ] Windows: `task check` (gofmt/vet/test — los tests corren aquí)
+- [x] Windows: `task check` (gofmt/vet/test — los tests corren aquí)
+- [x] Windows, validado con Wardogs (UE5, mismo patrón runtime+kernel que Outer Wilds):
+  - `oph-cli.exe --probe 10s`: LostEvents 0, 0x2B = 117.8/s; 0xD7 = 1198 ≈ 0x2B = 1178 → par espejo confirmado 1:1.
+  - `oph-cli.exe --cli`: lectura estable 105–111 FPS (el probe midió 117.8/s en el mismo minuto; escena variable). Antes: ~40 con caídas a 8.
 - [ ] Windows, con Outer Wilds en foco:
   - `oph-cli.exe --cli` al lado del contador de Steam: los números deben coincidir en juego estable y en tirones.
   - `oph-cli.exe --probe 10s`: `LostEvents` debe ser 0 y el 0x2B/segundo ≈ FPS real.

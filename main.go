@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const version = "1.3.0"
+const version = "1.3.1"
 
 func usage() {
 	fmt.Print(`Open Perf HUD ` + version + ` — FPS/CPU/GPU/RAM overlay
