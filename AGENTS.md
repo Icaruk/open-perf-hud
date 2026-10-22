@@ -26,9 +26,15 @@
 2. `task check` → `task build`.
 3. Commit, `git pull --rebase`, push (the remote moves — README edits happen
    from the web).
-4. `gh release create vX.Y.Z open-perf-hud.exe --title vX.Y.Z --notes "..."`.
-   - **Notes are for non-technical users**: what changed, from the user's point
-     of view ("the text could stay white and become hard to read; now it
+4. `gh release create vX.Y.Z open-perf-hud.exe --title vX.Y.Z --notes-file <file>`
+   (long notes or special chars break `--notes` in pwsh; write them to a file).
+   - Notes follow [Common Changelog](https://common-changelog.org): changes
+     grouped under `### Added`, `### Changed`, `### Removed`, `### Fixed` (in
+     that order, only the ones that apply), one line each, imperative mood
+     ("Add…", "Fix…"), breaking changes first with a bold **Breaking:** prefix,
+     skip internal noise. Categories are exactly those four — no "New".
+   - Notes are still **for non-technical users**: what changed, from the user's
+     point of view ("the text could stay white and become hard to read; now it
      switches to dark"). No internals, no GDI/StretchBlt jargon.
    - Replacing a broken asset without a new release:
      `gh release upload vX.Y.Z open-perf-hud.exe --clobber`.
