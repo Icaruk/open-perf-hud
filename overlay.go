@@ -631,25 +631,68 @@ func alertRed(gray int) (r, g, b int) {
 // applyAlpha: white text with alpha textA, tinted with the theme gray; inside
 // alert spans, with the alert red. Black background with alpha bgA
 // (premultiplied). GDI doesn't write the alpha channel; we derive it from
-// pixel coverage.
-func applyAlpha(px []byte, w, h int32, textA, bgA, gray int, spans []alertSpan) {
+// pixel coverage. Background pixels up to outline px away from a covered one
+// get a ring tinted with the opposite of the text gray — contrast on any
+// background for every text color (Dynamic included; alert red matches the
+// text luminance, so the same rule applies and the ring keeps the contrast
+// color).
+func applyAlpha(px []byte, w, h int32, textA, bgA, gray, outline int, spans []alertSpan) {
 	_, gr, gb := alertRed(gray)
-	for y := range h {
-		for x := range w {
-			i := (int(y)*int(w) + int(x)) * 4
+	// ring gray: opposite of the text's (the gap 111..137 has no palette
+	// entry, any midpoint works)
+	out := 0
+	if gray < 124 {
+		out = 255
+	}
+	iw, ih := int(w), int(h)
+	cov := make([]byte, iw*ih)
+	for i, j := 0, 0; i < len(px); i, j = i+4, j+1 {
+		b, g, r := int(px[i]), int(px[i+1]), int(px[i+2])
+		cov[j] = uint8(max(r, max(g, b)))
+	}
+	// dilated coverage: dial[j] = max coverage within (2·outline+1)² of j;
+	// one 3x3 max pass per radius.
+	dial := cov
+	for range outline {
+		next := make([]byte, len(dial))
+		for y := range ih {
+			for x := range iw {
+				m := 0
+				for dy := max(y-1, 0); dy <= min(y+1, ih-1); dy++ {
+					for dx := max(x-1, 0); dx <= min(x+1, iw-1); dx++ {
+						m = max(m, int(dial[dy*iw+dx]))
+					}
+				}
+				next[y*iw+x] = uint8(m)
+			}
+		}
+		dial = next
+	}
+	for y := range ih {
+		for x := range iw {
+			i := (y*iw + x) * 4
+			m := int(cov[y*iw+x])
 			tr, tg, tb := gray, gray, gray
-			for _, sp := range spans {
-				if x >= sp.x0 && x < sp.x1 && y >= sp.y0 && y < sp.y1 {
-					tr, tg, tb = 255, gr, gb
-					break
+			if m == 0 {
+				if mo := int(dial[y*iw+x]); mo > 0 {
+					m = mo
+					tr, tg, tb = out, out, out
+				} else {
+					px[i+3] = uint8(bgA) // plain background
+					continue
+				}
+			} else {
+				for _, sp := range spans {
+					if x >= int(sp.x0) && x < int(sp.x1) && y >= int(sp.y0) && y < int(sp.y1) {
+						tr, tg, tb = 255, gr, gb
+						break
+					}
 				}
 			}
-			b, g, r := int(px[i]), int(px[i+1]), int(px[i+2])
-			m := max(r, max(g, b))
 			a1 := m * textA / 255
-			px[i] = uint8(b * textA / 255 * tb / 255)
-			px[i+1] = uint8(g * textA / 255 * tg / 255)
-			px[i+2] = uint8(r * textA / 255 * tr / 255)
+			px[i] = uint8(m * textA / 255 * tb / 255)
+			px[i+1] = uint8(m * textA / 255 * tg / 255)
+			px[i+2] = uint8(m * textA / 255 * tr / 255)
 			px[i+3] = uint8(a1 + bgA*(255-a1)/255)
 		}
 	}
@@ -786,7 +829,7 @@ func (ov *overlay) render(lines [][]seg, x, y, w, h int32) {
 	if ov.cfg.TextColor == "Dynamic" {
 		gray = ov.sampleGray(x, y, w, h)
 	}
-	applyAlpha(px, w, h, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, gray, spans)
+	applyAlpha(px, w, h, int(ov.cfg.Opacity), int(ov.cfg.BgOpacity)*255/100, gray, outlinePx[ov.cfg.Outline], spans)
 
 	blend := blendFunction{BlendOp: 1 /*AC_SRC_OVER*/, SourceConstantAlph: 255, AlphaFormat: acSrcAlpha}
 	ptDst := sizeStruct{Cx: x, Cy: y}

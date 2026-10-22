@@ -60,7 +60,7 @@ const (
 
 	idxTextSize  = 1 // comboDefs indexes
 	idxTextColor = 2
-	idxBg        = 3
+	idxBg        = 4
 
 	maxOff = 9999
 )
@@ -98,6 +98,8 @@ var comboDefs = []comboDef{
 		func(o *overlay, i int) { o.cfg.FontSize = fontSizes[i]; o.makeFont() }},
 	{"Text color", colorOpts, curStr(colorOpts, func(c *Config) string { return c.TextColor }),
 		func(o *overlay, i int) { o.cfg.TextColor = colorOpts[i] }},
+	{"Outline", outlineOpts, curStr(outlineOpts, func(c *Config) string { return c.Outline }),
+		func(o *overlay, i int) { o.cfg.Outline = outlineOpts[i] }},
 	{"Background", bgLabels, func(c *Config) int { return c.BgOpacity / 5 },
 		func(o *overlay, i int) { o.cfg.BgOpacity = bgPcts[i] }},
 	{"Layout", orientationNames, curStr(orientationNames, func(c *Config) string { return orientationOf(c.Orientation).name }),
@@ -155,8 +157,8 @@ func openSettings(ov *overlay) {
 		}
 		settingsRegistered = true
 	}
-	// client 420x632 → total window size via AdjustWindowRect
-	rc := rect{Right: 420, Bottom: 632}
+	// client 420x668 → total window size via AdjustWindowRect
+	rc := rect{Right: 420, Bottom: 668}
 	procAdjustWindowRect.Call(uintptr(unsafe.Pointer(&rc)), wsOverlappedWindow, 0)
 	title, _ := syscall.UTF16PtrFromString("Open Perf HUD — Settings")
 	hwnd, _, _ := procCreateWindowExW.Call(0,
@@ -270,37 +272,37 @@ func (d *settingsDlg) buildControls() {
 		d.ctl("BUTTON", text, bsGroupbox, 8, y, 404, h, 0)
 	}
 
-	group("Layout", 8, 208)
-	for i := range 5 { // Position … Layout
+	group("Layout", 8, 244)
+	for i := range 6 { // Position … Layout
 		d.combo(int32(i), 36+36*int32(i))
 	}
-	group("Spacing", 224, 132)
-	for i := 5; i < len(comboDefs); i++ { // Margin, Inner margin, Item spacing
-		d.combo(int32(i), 252+36*int32(i-5))
+	group("Spacing", 260, 132)
+	for i := 6; i < len(comboDefs); i++ { // Margin, Inner margin, Item spacing
+		d.combo(int32(i), 288+36*int32(i-6))
 	}
 	d.syncBg()
 
-	group("Offsets (px)", 364, 68)
+	group("Offsets (px)", 400, 68)
 	ptrs := offPtrs(&d.ov.cfg)
 	for i := range offLabels {
 		x := int32(18 + i*94)
-		d.ctl("STATIC", offLabels[i], 0, x, 396, 48, 20, 0)
-		d.edits[i] = d.ctl("EDIT", "", wsBorder|wsTabStop|esNumber, x+48, 392, 44, 26, int32(idOff+i))
+		d.ctl("STATIC", offLabels[i], 0, x, 432, 48, 20, 0)
+		d.edits[i] = d.ctl("EDIT", "", wsBorder|wsTabStop|esNumber, x+48, 428, 44, 26, int32(idOff+i))
 		setWinText(d.edits[i], strconv.Itoa(int(*ptrs[i])))
 	}
 
-	group("Metrics", 440, 144)
+	group("Metrics", 476, 144)
 	mptrs := d.ov.cfg.metricPtrs()
 	for i, label := range metricLabels {
 		x := int32(20 + (i/5)*192)
-		y := int32(466 + (i%5)*23)
+		y := int32(502 + (i%5)*23)
 		d.checks[i] = d.ctl("BUTTON", label, bsAutocheckbox|wsTabStop, x, y, 184, 22, int32(idCheck+i))
 		if *mptrs[i] {
 			procSendMessageW.Call(d.checks[i], bmSetcheck, bstChecked, 0)
 		}
 	}
 
-	d.ctl("BUTTON", "Close", bsPushbutton|wsTabStop, 160, 594, 100, 30, idClose)
+	d.ctl("BUTTON", "Close", bsPushbutton|wsTabStop, 160, 630, 100, 30, idClose)
 }
 
 // combo creates the i-th combo row at y: label, options, current selection.

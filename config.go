@@ -19,6 +19,7 @@ type Config struct {
 	Metrics     Metrics `json:"metrics"`     // which lines the overlay shows
 	BgOpacity   int     `json:"bgOpacity"`   // 0-100 (%), opacity of the background only
 	TextColor   string  `json:"textColor"`   // text color (colorOpts)
+	Outline     string  `json:"outline"`     // none|thin|thick, contrast ring
 	InnerMargin string  `json:"innerMargin"` // none|xs|sm|md|lg, inner padding
 	Spacing     string  `json:"spacing"`     // none|xs|sm|md|lg, gap between lines
 	OffLeft     offset  `json:"offsetLeft"`  // extra px from the left edge (0 = none)
@@ -132,6 +133,11 @@ func clampOffset(o offset) offset {
 var colorOpts = []string{"Dynamic", "White", "White-grey 1", "White-grey 2", "White-grey 3", "Grey", "Grey-dark 1", "Grey-dark 2", "Grey-black", "Black"}
 var colorGray = map[string]int{"White": 255, "White-grey 1": 224, "White-grey 2": 198, "White-grey 3": 171, "Grey": 158, "Grey-dark 1": 138, "Grey-dark 2": 110, "Grey-black": 74, "Black": 0}
 
+// outlineOpts: menu order of the contrast ring; outlinePx its radius,
+// same scale as margin/spacing (none/xs… stays for the 0 case only).
+var outlineOpts = []string{"none", "sm", "md", "lg"}
+var outlinePx = map[string]int{"none": 0, "sm": 1, "md": 2, "lg": 3}
+
 // textGray: base gray for normal text. Dynamic has no fixed gray —
 // White-grey 2 is its base (sampleGray refines it per background, and it is
 // the fallback when the screen can't be captured).
@@ -143,7 +149,7 @@ func (c *Config) textGray() int {
 }
 
 var defaultCfg = Config{Corner: 1, Margin: "none", Opacity: 180, FontSize: "sm", Orientation: "horizontal",
-	RefreshMs: 500, Hotkey: "CTRL+SHIFT+O", BgOpacity: 25, InnerMargin: "none", Spacing: "xs", TextColor: "White-grey 2",
+	RefreshMs: 500, Hotkey: "CTRL+SHIFT+O", BgOpacity: 25, InnerMargin: "none", Spacing: "xs", TextColor: "White-grey 2", Outline: "sm",
 	Metrics: Metrics{Name: false, FPS: true, CPUPct: true, GPUPct: true, GPUTemp: true, VRAMPct: true, VRAMGB: true, RAMPct: true, RAMGB: true}}
 
 func configPath() string {
@@ -178,6 +184,7 @@ func (c *Config) normalize() {
 		c.Orientation = defaultCfg.Orientation
 	}
 	fixStr(&c.FontSize, fontPx, defaultCfg.FontSize)
+	fixStr(&c.Outline, outlinePx, defaultCfg.Outline)
 	fixStr(&c.Margin, marginPx, defaultCfg.Margin)
 	fixStr(&c.InnerMargin, marginPx, defaultCfg.InnerMargin)
 	fixStr(&c.Spacing, spacingPx, defaultCfg.Spacing)

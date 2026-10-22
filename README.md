@@ -57,6 +57,7 @@ Everything is in the Settings window (tray icon → **Settings…**), and saved 
 | Position | which corner of the screen |
 | Text size | `xs` · `sm` · `md` · `lg` |
 | Text color | `Dynamic` (light or dark text to fit whatever is behind) + 9 greys from White to Black (`Grey` and `Grey-dark 1` match Steam's overlay) |
+| Outline | contrast ring around the glyphs, `none` · `sm` · `md` · `lg` (1–3 px, tinted with the opposite of the text color) |
 | Background | opacity of the black box behind the text, 0–100 % in steps of 5 (off with `Dynamic`) |
 | Layout | one metric per line, or all on one line |
 | Margin | distance from the screen edge |
@@ -81,6 +82,7 @@ Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU
   "orientation": "horizontal",
   "bgOpacity": 25,
   "textColor": "White-grey 2",
+  "outline": "sm",
   "innerMargin": "none",
   "spacing": "xs",
   "offsetLeft": 0,
@@ -100,6 +102,7 @@ Consecutive metrics of the same kind share their label (`GPU 10% · 64 °C | CPU
 - `opacity`: 0–255 (text).
 - `bgOpacity`: 0–100 in steps of 5 (% of the black background; 0 = text only; forced to 0 with `Dynamic`).
 - `textColor`: `Dynamic|White|White-grey 1..3|Grey|Grey-dark 1..2|Grey-black|Black` — `Dynamic` samples the screen behind the overlay each refresh and picks White (255) on dark backgrounds or Grey-black (74) on light ones; the rest is a fixed grayscale (255/224/198/171/158/138/110/74/0), where `Grey` and `Grey-dark 1` are Steam's greys (9e9e9e/8a8a8a). Values over their threshold (CPU/GPU 99 %, RAM/VRAM 95 %) turn red in any color, tinted for contrast.
+- `outline`: `none|sm|md|lg` (0/1/2/3 px ring around the glyphs, tinted with the opposite of the text gray — readable on any background, works with every text color including `Dynamic` and the alert red).
 - `innerMargin`: `none|xs|sm|md|lg` (inner padding).
 - `spacing`: `none|xs|sm|md|lg|xl` (0/2/5/8/12/20 px between items; the step is based on font size, not the GDI cell, so it is properly compact; in horizontal layout it scales the `·` separator; `none` = no spaces at all).
 - `fontSize`: `xs|sm|md|lg` (12/15/18/24 px).

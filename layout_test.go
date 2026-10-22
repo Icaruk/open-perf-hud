@@ -6,16 +6,22 @@ import (
 )
 
 // applyAlpha: black background with bgA, white text with textA (premultiplied).
+// Every background pixel touches text, so all become outline (gray 255 →
+// black outline).
 func TestApplyAlpha(t *testing.T) {
 	px := []byte{
-		0, 0, 0, 0, // background
+		0, 0, 0, 0, // background → outline (neighbor is text)
 		255, 255, 255, 0, // text
 		128, 128, 128, 0, // 50% antialias
 	}
-	applyAlpha(px, 3, 1, 200, 64, 255, nil)
-	// background: alpha=bgA, color 0
-	if px[3] != 64 {
-		t.Fatalf("bg alpha = %d, want 64", px[3])
+	applyAlpha(px, 3, 1, 200, 64, 255, 1, nil)
+	// outline: coverage 255 from the text neighbor, black tint
+	wantOutA := byte(255*200/255 + 64*(255-255*200/255)/255)
+	if px[3] != wantOutA {
+		t.Fatalf("outline alpha = %d, want %d", px[3], wantOutA)
+	}
+	if px[2] != 0 || px[1] != 0 || px[0] != 0 {
+		t.Fatalf("outline color = %v, want 0,0,0", px[0:3])
 	}
 	// text: premult color = 255*200/255 = 200; alpha = composite over the background
 	wantTextA := byte(255*200/255 + 64*(255-255*200/255)/255)
@@ -35,18 +41,20 @@ func TestApplyAlpha(t *testing.T) {
 	}
 }
 
-// applyAlpha with reduced brightness: color scales, alpha doesn't.
+// applyAlpha with reduced brightness: color scales, alpha doesn't. The dark
+// gray makes the outline white.
 func TestApplyAlphaGray(t *testing.T) {
 	px := []byte{255, 255, 255, 0, 0, 0, 0, 0} // text, background
-	applyAlpha(px, 2, 1, 255, 0, 100, nil)     // gray 100 (~39% white)
+	applyAlpha(px, 2, 1, 255, 0, 100, 1, nil)  // gray 100 (~39% white)
 	if px[1] != byte(255*100/255) {
 		t.Fatalf("text color = %d, want %d", px[1], 255*100/255)
 	}
 	if px[3] != 255 {
 		t.Fatalf("text alpha = %d, want 255 (gray doesn't touch alpha)", px[3])
 	}
-	if px[7] != 0 {
-		t.Fatalf("bg alpha = %d, want 0", px[7])
+	// background touches text → white outline, full alpha
+	if px[4] != 255 || px[5] != 255 || px[6] != 255 || px[7] != 255 {
+		t.Fatalf("outline pixel = %v, want 255,255,255,255", px[4:8])
 	}
 }
 
@@ -54,7 +62,7 @@ func TestApplyAlphaGray(t *testing.T) {
 // keeps the theme gray.
 func TestApplyAlphaAlert(t *testing.T) {
 	px := []byte{255, 255, 255, 0, 255, 255, 255, 0} // two text pixels
-	applyAlpha(px, 2, 1, 255, 0, 198, []alertSpan{{x0: 0, x1: 1, y0: 0, y1: 1}})
+	applyAlpha(px, 2, 1, 255, 0, 198, 1, []alertSpan{{x0: 0, x1: 1, y0: 0, y1: 1}})
 	_, gr, gb := alertRed(198)
 	// BGRA buffer: px[2] is R (the 255), px[0]/px[1] are B/G (the x).
 	if px[2] != 255 || px[1] != uint8(gr) || px[0] != uint8(gb) {
@@ -65,6 +73,70 @@ func TestApplyAlphaAlert(t *testing.T) {
 	}
 	if px[5] != 198 { // outside the span: theme gray
 		t.Errorf("normal pixel = %d, want 198", px[5])
+	}
+}
+
+// outline: 1px dilation around the text, opposite tint of the text gray;
+// pixels far from text stay plain background; the ring inside an alert span
+// keeps the contrast color (not red). Thickness 2 reaches one pixel further,
+// thickness 0 disables.
+func TestApplyAlphaOutline(t *testing.T) {
+	// 5x1: far bg, outline, text, outline, far bg
+	px := []byte{
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		255, 255, 255, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+	}
+	applyAlpha(px, 5, 1, 255, 0, 255, 1, nil) // white text → black outline
+	if px[3] != 0 || px[19] != 0 {
+		t.Errorf("far bg not outlined: alphas %d/%d, want 0", px[3], px[19])
+	}
+	if px[7] != 255 || px[15] != 255 {
+		t.Errorf("outline alphas = %d/%d, want 255", px[7], px[15])
+	}
+	if px[4] != 0 || px[5] != 0 || px[6] != 0 {
+		t.Errorf("outline color = %v, want 0,0,0 (black for white text)", px[4:7])
+	}
+	applyAlpha(px, 5, 1, 255, 0, 74, 1, nil) // dark text → white outline
+	if px[4] != 255 || px[5] != 255 || px[6] != 255 {
+		t.Errorf("outline color = %v, want 255,255,255 (white for dark text)", px[4:7])
+	}
+
+	// thickness 2: the far bg pixels are now 2px from text → ring reaches them
+	px2 := []byte{
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		255, 255, 255, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+	}
+	applyAlpha(px2, 5, 1, 255, 0, 255, 2, nil)
+	if px2[3] != 255 || px2[19] != 255 {
+		t.Errorf("thick ring doesn't reach 2px: alphas %d/%d, want 255", px2[3], px2[19])
+	}
+
+	// thickness 0: neighbors stay plain background
+	px0 := []byte{
+		0, 0, 0, 0,
+		255, 255, 255, 0,
+		0, 0, 0, 0,
+	}
+	applyAlpha(px0, 3, 1, 255, 0, 255, 0, nil)
+	if px0[3] != 0 || px0[11] != 0 {
+		t.Errorf("outline=0 outlines anyway: alphas %d/%d, want 0", px0[3], px0[11])
+	}
+
+	// ring next to alert text: contrast tint, not the span's red
+	px = []byte{
+		0, 0, 0, 0, 0, 0, 0, 0,
+		255, 255, 255, 0, 255, 255, 255, 0,
+	}
+	applyAlpha(px, 4, 1, 255, 0, 198, 1, []alertSpan{{x0: 0, x1: 4, y0: 0, y1: 1}})
+	_, gr, _ := alertRed(198)
+	if px[0] != 0 || px[1] != 0 || px[2] != 0 {
+		t.Errorf("outline in span = %v, want black ring (not red %d)", px[0:3], gr)
 	}
 }
 
