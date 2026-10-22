@@ -80,3 +80,46 @@ func TestFPSTrackerKernelOnlyPair(t *testing.T) {
 		t.Fatalf("FPS = %d, want 1 (kernel-only pair should dedup)", fps)
 	}
 }
+
+// Kernel-only games (Vulkan/OpenGL): with no runtime stream at all, kernel
+// events ARE the channel and count normally.
+func TestFPSTrackerKernelFallback(t *testing.T) {
+	tr := newTracker()
+	base := time.Now()
+	for i := range 3 {
+		tr.add(9, base.Add(time.Duration(i)*16*time.Millisecond), true)
+	}
+	if fps := tr.FPS(9); fps != 3 {
+		t.Fatalf("FPS = %d, want 3 (kernel fallback channel not counting)", fps)
+	}
+}
+
+// The Outer Wilds regression: while the runtime stream is alive, kernel
+// events near real frames (DWM noise or mirrors) are ALL ignored — none of
+// them may eat a runtime frame.
+func TestFPSTrackerKernelNoiseNeverEatsRuntime(t *testing.T) {
+	tr := newTracker()
+	base := time.Now()
+	tr.add(7, base, false)                         // real frame
+	tr.add(7, base.Add(1*time.Millisecond), true)  // mirror
+	tr.add(7, base.Add(8*time.Millisecond), true)  // DWM noise
+	tr.add(7, base.Add(15*time.Millisecond), true) // noise, 1ms before the next real frame
+	tr.add(7, base.Add(16*time.Millisecond), false)
+	if fps := tr.FPS(7); fps != 2 {
+		t.Fatalf("FPS = %d, want 2 (kernel noise ate or added frames)", fps)
+	}
+}
+
+// Mode switch / runtime death: after runtime is silent past runtimeGate,
+// kernel events take over. The stale runtime frame is correctly expired from
+// the 1s window by then; what matters is that the kernel event counts
+// (a broken gate would drop it and read 0).
+func TestFPSTrackerModeSwitch(t *testing.T) {
+	tr := newTracker()
+	base := time.Now()
+	tr.add(7, base, false)
+	tr.add(7, base.Add(2*runtimeGate), true) // runtime silent: kernel adopted
+	if fps := tr.FPS(7); fps != 1 {
+		t.Fatalf("FPS = %d, want 1 (kernel fallback not adopted after runtime silence)", fps)
+	}
+}

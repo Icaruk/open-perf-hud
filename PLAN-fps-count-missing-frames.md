@@ -48,3 +48,25 @@ No se puede medir desde macOS (ETW no existe ahí): los cambios se compilan cruz
   - `oph-cli.exe --cli` al lado del contador de Steam: los números deben coincidir en juego estable y en tirones.
   - `oph-cli.exe --probe 10s`: `LostEvents` debe ser 0 y el 0x2B/segundo ≈ FPS real.
   - Si sigue mal: pegar la salida del probe (histograma + lost events) y diagnosticar con datos.
+
+## Iteración 2 (v1.3.2): el reportero seguía viendo 40
+
+v1.3.1 aún descartaba un evento runtime si llegaba ≤2ms después de uno kernel.
+Si el stream kernel lleva eventos ajenos (composición/flip del DWM en contexto
+del juego) que caen justo antes de un Present real, el frame real se perdía →
+subconteo persistente. (Propuesta alternativa de Claude: casarse con un canal;
+descartada por no-determinista: el canal elegido depende de qué evento llegue
+primero.)
+
+- [x] Runtime SIEMPRE cuenta; kernel solo cuenta si el runtime lleva
+  `runtimeGate` (1,5s) callado (fallback Vulkan/OpenGL y cambios de modo).
+  Dif real frente a v1.3.1: dos condiciones.
+- [x] La versión se imprime al arrancar `--cli` y `--probe` (el reportero
+  puede confirmar qué exe corre).
+- [x] Tests: los 5 de v1.3.1 pasan sin cambios + KernelFallback,
+  KernelNoiseNeverEatsRuntime, ModeSwitch (el frame runtime caducado del
+  switch sale por la ventana de 1s, no por el gate — esperado).
+- [x] Validación: DD2 con contador de Steam de referencia — Steam 94,
+  HUD 93–95, mismo instante; probe simultáneo 102.5/s global (DD2 + resto),
+  LostEvents 0. El 208.5/s de un probe anterior era otro momento de carga
+  del juego, no un miscount.

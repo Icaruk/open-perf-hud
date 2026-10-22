@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const version = "1.3.1"
+const version = "1.3.2"
 
 func usage() {
 	fmt.Print(`Open Perf HUD ` + version + ` — FPS/CPU/GPU/RAM overlay
@@ -114,7 +114,7 @@ func runCLI() {
 		defer cleanup()
 	}
 
-	fmt.Println("Open Perf HUD CLI — Ctrl+C to exit")
+	fmt.Printf("Open Perf HUD CLI v%s — Ctrl+C to exit\n", version)
 	tick := time.NewTicker(time.Duration(cfg.RefreshMs) * time.Millisecond)
 	defer tick.Stop()
 	printLine := func() {

@@ -42,6 +42,13 @@ var dxgKrnlGUID = func() (g etw.GUID) {
 	return *p
 }()
 
+// runtimeGate: while a PID's runtime (DXGI/D3D9) stream is live, its DxgKrnl
+// events are mirrors of the same presents (plus DWM composition noise) and are
+// ignored. If runtime goes silent this long — a presentation-mode switch, or
+// Vulkan/OpenGL games that never emit runtime events — kernel becomes the
+// fallback channel.
+const runtimeGate = 1500 * time.Millisecond
+
 // FPSTracker counts Present events per PID in a 1s sliding window.
 type FPSTracker struct {
 	mu     sync.Mutex
@@ -50,30 +57,31 @@ type FPSTracker struct {
 	lastK  map[uint32]time.Time // last kernel (DxgKrnl) present
 }
 
-// add records a Present event; kernel=true for DxgKrnl events. A windowed
-// present emits a runtime event AND a kernel one (PresentHistory) ≤2ms apart:
-// only that mirror pair is deduplicated, on the EVENT timestamp (the consumer
-// delivers in bursts; with time.Now() a whole burst collapsed to 1).
+// add records a Present event; kernel=true for DxgKrnl events.
 //
-// Runtime events always count unless they mirror a kernel one, and a dropped
-// kernel mirror updates no slot: after a hitch the engine catches up with real
-// frames <2ms apart and those MUST count (a symmetric dedup collapsed the
-// burst in chain and read 40 instead of 60, or 8 after a stutter).
-// ponytail: kernel-only games (Vulkan/OpenGL) still dedup <2ms pairs against
-// lastK — ceiling ~500 FPS, same as before.
+// Never pair the two streams by time: unrelated kernel events (composition/
+// flip activity in the game's context) can land just before a real runtime
+// present, and a "<2ms = same frame" rule then drops REAL frames — the
+// persistent undercount (40 instead of 60) reported in Outer Wilds. Instead:
+//
+//   - Runtime events ALWAYS count and refresh lastR.
+//   - Kernel events count only when runtime has been silent for runtimeGate
+//     (fallback channel), with a 2ms kernel-kernel dedup for bursts.
+//
+// ponytail: kernel-only games (Vulkan/OpenGL) still dedup <2ms kernel pairs —
+// ceiling ~500 FPS, same as before.
 func (t *FPSTracker) add(pid uint32, ts time.Time, kernel bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if kernel {
-		if ts.Sub(t.lastR[pid]) < 2*time.Millisecond || ts.Sub(t.lastK[pid]) < 2*time.Millisecond {
-			return // mirror or kernel-only burst: drop, touch nothing
+		if ts.Sub(t.lastR[pid]) < runtimeGate {
+			return // runtime stream alive: mirror or DWM noise, ignore
+		}
+		if ts.Sub(t.lastK[pid]) < 2*time.Millisecond {
+			return // kernel-only burst
 		}
 		t.lastK[pid] = ts
 	} else {
-		if ts.Sub(t.lastK[pid]) < 2*time.Millisecond {
-			t.lastR[pid] = ts // runtime half of a mirror pair
-			return
-		}
 		t.lastR[pid] = ts
 	}
 	ev := append(t.events[pid], ts)
@@ -247,7 +255,7 @@ func runProbe(d time.Duration) {
 	defer c.Stop()
 	defer s.Stop()
 
-	fmt.Printf("Probing ETW events for %v (open/move a game or video)...\n", d)
+	fmt.Printf("Open Perf HUD v%s — probing ETW events for %v (open/move a game or video)...\n", version, d)
 	<-ctx.Done()
 
 	mu.Lock()
