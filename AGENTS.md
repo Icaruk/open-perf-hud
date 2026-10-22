@@ -29,10 +29,13 @@
 4. `gh release create vX.Y.Z open-perf-hud.exe --title vX.Y.Z --notes-file <file>`
    (long notes or special chars break `--notes` in pwsh; write them to a file).
    - Notes follow [Common Changelog](https://common-changelog.org): changes
-     grouped under `### Added`, `### Changed`, `### Removed`, `### Fixed` (in
+     grouped under `### Changed`, `### Added`, `### Removed`, `### Fixed` (in
      that order, only the ones that apply), one line each, imperative mood
      ("Add…", "Fix…"), breaking changes first with a bold **Breaking:** prefix,
      skip internal noise. Categories are exactly those four — no "New".
+   - Mirror every entry into `CHANGELOG.md` (latest first, `## X.Y.Z - DATE`,
+     reference links to the GitHub release at the bottom) and commit it before
+     tagging the release.
    - Notes are still **for non-technical users**: what changed, from the user's
      point of view ("the text could stay white and become hard to read; now it
      switches to dark"). No internals, no GDI/StretchBlt jargon.
