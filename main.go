@@ -71,11 +71,8 @@ func runOverlayMode() {
 	mu, existed := grabInstanceMutex()
 	if existed {
 		windows.CloseHandle(windows.Handle(mu)) // we don't hold the other instance's mutex
-		if !askRestart() {
-			return
-		}
+		// replace the running instance: ask it to exit, then take its place
 		restartRunning()
-		// wait for the previous instance to exit and release the mutex
 		for range 30 {
 			time.Sleep(100 * time.Millisecond)
 			if mu, existed = grabInstanceMutex(); !existed {

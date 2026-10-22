@@ -44,10 +44,6 @@ const (
 
 	monitorDefaultToNearest = 2
 
-	mbRetryCancel  = 0x0005 // MB_RETRYCANCEL
-	mbIconQuestion = 0x0020
-	idRetry        = 4
-
 	ulwAlpha     = 0x2
 	acSrcAlpha   = 0x1
 	dibRGBColor  = 0x0
@@ -127,7 +123,6 @@ var (
 	procGetCursorPos        = moduser32.NewProc("GetCursorPos")
 
 	procCreateMutexW = modkernel32.NewProc("CreateMutexW")
-	procMessageBoxW  = moduser32.NewProc("MessageBoxW")
 )
 
 // ---- structs con layout C exacto (x64) ----
@@ -261,14 +256,6 @@ func grabInstanceMutex() (mu uintptr, existed bool) {
 	name, _ := syscall.UTF16PtrFromString(`Local\OpenPerfHudOverlay`)
 	mu, _, err := procCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(name)))
 	return mu, err == windows.ERROR_ALREADY_EXISTS
-}
-
-// askRestart asks whether to restart the already-running instance. true = restart.
-func askRestart() bool {
-	t, _ := syscall.UTF16PtrFromString("Open Perf HUD is already running.\n\nRetry: restart it\nCancel: keep the current one")
-	c, _ := syscall.UTF16PtrFromString("Open Perf HUD")
-	r1, _, _ := procMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)), mbRetryCancel|mbIconQuestion)
-	return r1 == idRetry
 }
 
 // restartRunning asks the existing instance to close (WM_CLOSE); its mutex
