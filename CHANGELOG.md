@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.1] - 2026-10-25
+
+### Fixed
+
+- Fix the darkest text colors (Grey-dark 2, Grey-black, Black) turning into a hard-to-read white smear when the outline was on; they now render without it, and Settings locks the Outline option while one of them is selected
+
 ## [1.4.0] - 2026-10-22
 
 ### Changed
@@ -55,6 +61,7 @@ _First release: single 4 MB exe, no installer, no dependencies. Windows 10/11 x6
 - Add an always-on-top, click-through overlay with per-pixel alpha showing FPS of the focused app (from ETW present events, no injected DLL), CPU %, RAM, GPU %, VRAM and GPU temperature
 - Add tray menu, `CTRL+SHIFT+O` hotkey, single instance, and settings saved to `config.json` next to the exe
 
+[1.4.1]: https://github.com/Icaruk/open-perf-hud/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Icaruk/open-perf-hud/releases/tag/v1.4.0
 [1.3.1]: https://github.com/Icaruk/open-perf-hud/releases/tag/v1.3.1
 [1.3.0]: https://github.com/Icaruk/open-perf-hud/releases/tag/v1.3.0

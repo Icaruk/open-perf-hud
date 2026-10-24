@@ -631,18 +631,17 @@ func alertRed(gray int) (r, g, b int) {
 // applyAlpha: white text with alpha textA, tinted with the theme gray; inside
 // alert spans, with the alert red. Black background with alpha bgA
 // (premultiplied). GDI doesn't write the alpha channel; we derive it from
-// pixel coverage. Background pixels up to outline px away from a covered one
-// get a ring tinted with the opposite of the text gray — contrast on any
-// background for every text color (Dynamic included; alert red matches the
-// text luminance, so the same rule applies and the ring keeps the contrast
-// color).
+// pixel coverage. Light text gets a black ring up to outline px away from a
+// covered pixel, for contrast on any background. Dark text gets no ring: on
+// a light background the fill already contrasts, and on a dark one a bright
+// ring smothered the glyphs (the eye reads the ring, not the fill).
+// Dynamic included; alert red matches the text luminance, so the same rule
+// applies.
 func applyAlpha(px []byte, w, h int32, textA, bgA, gray, outline int, spans []alertSpan) {
 	_, gr, gb := alertRed(gray)
-	// ring gray: opposite of the text's (the gap 111..137 has no palette
-	// entry, any midpoint works)
-	out := 0
+	// 124: midpoint of the palette gap 111..137 (Grey-dark 2 / Grey-dark 1)
 	if gray < 124 {
-		out = 255
+		outline = 0
 	}
 	iw, ih := int(w), int(h)
 	cov := make([]byte, iw*ih)
@@ -676,7 +675,7 @@ func applyAlpha(px []byte, w, h int32, textA, bgA, gray, outline int, spans []al
 			if m == 0 {
 				if mo := int(dial[y*iw+x]); mo > 0 {
 					m = mo
-					tr, tg, tb = out, out, out
+					tr, tg, tb = 0, 0, 0
 				} else {
 					px[i+3] = uint8(bgA) // plain background
 					continue

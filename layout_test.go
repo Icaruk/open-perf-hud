@@ -41,8 +41,8 @@ func TestApplyAlpha(t *testing.T) {
 	}
 }
 
-// applyAlpha with reduced brightness: color scales, alpha doesn't. The dark
-// gray makes the outline white.
+// applyAlpha with reduced brightness: color scales, alpha doesn't. Dark text
+// gets no outline.
 func TestApplyAlphaGray(t *testing.T) {
 	px := []byte{255, 255, 255, 0, 0, 0, 0, 0} // text, background
 	applyAlpha(px, 2, 1, 255, 0, 100, 1, nil)  // gray 100 (~39% white)
@@ -52,9 +52,9 @@ func TestApplyAlphaGray(t *testing.T) {
 	if px[3] != 255 {
 		t.Fatalf("text alpha = %d, want 255 (gray doesn't touch alpha)", px[3])
 	}
-	// background touches text → white outline, full alpha
-	if px[4] != 255 || px[5] != 255 || px[6] != 255 || px[7] != 255 {
-		t.Fatalf("outline pixel = %v, want 255,255,255,255", px[4:8])
+	// background next to dark text stays plain: no ring
+	if px[4] != 0 || px[5] != 0 || px[6] != 0 || px[7] != 0 {
+		t.Fatalf("outline pixel = %v, want plain background", px[4:8])
 	}
 }
 
@@ -76,10 +76,10 @@ func TestApplyAlphaAlert(t *testing.T) {
 	}
 }
 
-// outline: 1px dilation around the text, opposite tint of the text gray;
-// pixels far from text stay plain background; the ring inside an alert span
-// keeps the contrast color (not red). Thickness 2 reaches one pixel further,
-// thickness 0 disables.
+// outline: 1px dilation around the text, black tint for light text, no ring
+// at all for dark text; pixels far from text stay plain background; the ring
+// inside an alert span keeps black (not red). Thickness 2 reaches one pixel
+// further, thickness 0 disables.
 func TestApplyAlphaOutline(t *testing.T) {
 	// 5x1: far bg, outline, text, outline, far bg
 	px := []byte{
@@ -99,9 +99,9 @@ func TestApplyAlphaOutline(t *testing.T) {
 	if px[4] != 0 || px[5] != 0 || px[6] != 0 {
 		t.Errorf("outline color = %v, want 0,0,0 (black for white text)", px[4:7])
 	}
-	applyAlpha(px, 5, 1, 255, 0, 74, 1, nil) // dark text → white outline
-	if px[4] != 255 || px[5] != 255 || px[6] != 255 {
-		t.Errorf("outline color = %v, want 255,255,255 (white for dark text)", px[4:7])
+	applyAlpha(px, 5, 1, 255, 0, 74, 1, nil) // dark text → no outline
+	if px[4] != 0 || px[5] != 0 || px[6] != 0 || px[7] != 0 {
+		t.Errorf("dark text outlined anyway: pixel = %v, want plain background", px[4:8])
 	}
 
 	// thickness 2: the far bg pixels are now 2px from text → ring reaches them
@@ -281,5 +281,13 @@ func TestColorGray(t *testing.T) {
 	// Dynamic has no fixed gray (sampleGray picks it); the rest map 1:1.
 	if len(colorOpts) != len(colorGray)+1 || colorOpts[0] != "Dynamic" || len(colorOpts) > 10 {
 		t.Fatalf("inconsistent palette: %d/%d (+Dynamic)", len(colorOpts), len(colorGray))
+	}
+	// The 111..137 gap separates ring (>=124 renders it) from no-ring; a
+	// color inside it would make the settings combo (enabled) disagree with
+	// the render (silently skipped).
+	for name, g := range colorGray {
+		if g >= 111 && g <= 137 {
+			t.Errorf("%s gray %d inside the 111..137 ring gap", name, g)
+		}
 	}
 }

@@ -60,6 +60,7 @@ const (
 
 	idxTextSize  = 1 // comboDefs indexes
 	idxTextColor = 2
+	idxOutline   = 3
 	idxBg        = 4
 
 	maxOff = 9999
@@ -226,6 +227,7 @@ func (d *settingsDlg) command(wParam uintptr) {
 		comboDefs[i].set(ov, int(sel))
 		if i == idxTextColor {
 			d.syncBg()
+			d.syncOutline()
 		}
 		ov.cfgChanged()
 	case code == enChange && id >= idOff && id < idOff+uintptr(len(offLabels)):
@@ -266,6 +268,22 @@ func (d *settingsDlg) syncBg() {
 	procSendMessageW.Call(d.combos[idxBg], cbSetcursel, sel, 0)
 }
 
+// syncOutline: the dark text colors (Grey-dark 2 and darker) render without
+// a ring — it would smother them — so while one is selected the Outline
+// combo resets to none and locks.
+func (d *settingsDlg) syncOutline() {
+	dark := d.ov.cfg.textGray() < 124
+	enable := uintptr(1)
+	sel := uintptr(comboDefs[idxOutline].cur(&d.ov.cfg))
+	if dark {
+		enable = 0
+		d.ov.cfg.Outline = "none"
+		sel = 0
+	}
+	procEnableWindow.Call(d.combos[idxOutline], enable)
+	procSendMessageW.Call(d.combos[idxOutline], cbSetcursel, sel, 0)
+}
+
 // buildControls creates the groups, combos, edits, checks and Close button.
 func (d *settingsDlg) buildControls() {
 	group := func(text string, y, h int32) {
@@ -281,6 +299,7 @@ func (d *settingsDlg) buildControls() {
 		d.combo(int32(i), 288+36*int32(i-6))
 	}
 	d.syncBg()
+	d.syncOutline()
 
 	group("Offsets (px)", 400, 68)
 	ptrs := offPtrs(&d.ov.cfg)
